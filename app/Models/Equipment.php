@@ -7,7 +7,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Equipment extends Model
 {
-    protected $fillable = ['name', 'serial_number', 'status', 'current_site_id'];
+    protected $fillable = ['name', 'serial_number', 'category_id', 'brand_id', 'status', 'current_site_id'];
+
+// Relationship to Category
+public function category() {
+    return $this->belongsTo(Category::class);
+}
+
+// Relationship to Brand
+public function brand() {
+    return $this->belongsTo(Brand::class);
+}
 
     public function currentSite(): BelongsTo
     {

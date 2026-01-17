@@ -2,22 +2,27 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Brand;
+use App\Models\Category;
 use App\Models\Equipment;
-use App\Models\Site;
 use App\Models\InventoryMovement;
+use App\Models\Site;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 
 class InventoryController extends Controller
 {
 // List all
-    public function index() {
-        return Inertia::render('Inventory/EquipmentList', [
-            'equipment' => Equipment::with('currentSite')->get(),
-            'sites' => Site::all()
-        ]);
-    }
+    public function index()
+{
+    return Inertia::render('Inventory/EquipmentList', [
+        'equipment' => Equipment::with(['category', 'brand', 'currentSite'])->get(),
+        'categories' => Category::all(),
+        'brands' => Brand::all(),
+        'sites' => Site::all(),
+    ]);
+}
 
     // INSERT: Create New Equipment
     public function store(Request $request) {
