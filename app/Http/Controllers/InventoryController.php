@@ -17,7 +17,11 @@ class InventoryController extends Controller
     public function index()
 {
     return Inertia::render('Inventory/EquipmentList', [
-        'equipment' => Equipment::with(['category', 'brand', 'currentSite'])->get(),
+        // Changed .get() to .paginate(10)
+        'equipment' => Equipment::with(['category', 'brand', 'currentSite'])
+            ->latest()
+            ->paginate(10)
+            ->withQueryString(),
         'categories' => Category::all(),
         'brands' => Brand::all(),
         'sites' => Site::all(),
