@@ -5,6 +5,7 @@ import { ref, computed } from 'vue';
 const props = defineProps({
     equipment: Object,    // Main Rigs (is_attachment: 0) - Paginated
     depoSpares: Array,    // Warehouse Items (is_attachment: 1) - Array
+    allRigs: Array,       // Full list for the dropdown (from Controller)
     categories: Array,
     brands: Array,
     sites: Array
@@ -13,31 +14,34 @@ const props = defineProps({
 // --- STATE ---
 const activeTab = ref('fleet');
 const showAddModal = ref(false);
+const showLinkModal = ref(false);
 const editingItem = ref(null);
 const showLogsModal = ref(false);
+const showLogForm = ref(false); // Toggle for adding new service records
 const selectedItem = ref(null);
+const linkingSpare = ref(null);
 const searchQuery = ref('');
 
-// --- ADD FORM ---
+// --- FORMS ---
 const addForm = useForm({
-    name: '',
-    serial_number: '',
-    category_id: '',
-    brand_id: '',
-    current_site_id: '',
-    status: 'Working',
-    is_attachment: 0 // Controller uses this to decide where it lands
+    name: '', serial_number: '', category_id: '', brand_id: '',
+    current_site_id: '', status: 'Working', is_attachment: 0
 });
 
-const editForm = useForm({
-    name: '',
-    serial_number: '',
-    status: ''
+const editForm = useForm({ name: '', serial_number: '', status: '' });
+
+const linkForm = useForm({ spare_id: '', parent_id: '' });
+
+const logForm = useForm({
+    equipment_id: '',
+    service_date: new Date().toISOString().split('T')[0],
+    running_hours: '',
+    service_type: '',
+    parts_replaced: '',
 });
 
 // --- DATA FILTERING ---
 const filteredData = computed(() => {
-    // IMPORTANT: 'equipment' has a '.data' property because it is paginated
     const dataSource = activeTab.value === 'fleet' ? props.equipment.data : props.depoSpares;
     if (!dataSource) return [];
     if (!searchQuery.value) return dataSource;
@@ -49,6 +53,12 @@ const filteredData = computed(() => {
 });
 
 // --- METHODS ---
+const openHistory = (item) => {
+    selectedItem.value = item;
+    showLogsModal.value = true;
+    showLogForm.value = false; // Reset log form state
+};
+
 const openEdit = (item) => {
     editingItem.value = item;
     editForm.name = item.name;
@@ -56,19 +66,49 @@ const openEdit = (item) => {
     editForm.status = item.status;
 };
 
+const openLinkModal = (spare) => {
+    linkingSpare.value = spare;
+    linkForm.spare_id = spare.id;
+    showLinkModal.value = true;
+};
+
 const submitAdd = () => {
-    addForm.post('/inventory', {
-        onSuccess: () => {
-            addForm.reset();
-            showAddModal.value = false;
-        },
-        onError: (err) => console.log(err)
-    });
+    addForm.post('/inventory', { onSuccess: () => { addForm.reset(); showAddModal.value = false; } });
 };
 
 const submitUpdate = () => {
-    editForm.put(`/inventory/${editingItem.value.id}`, {
-        onSuccess: () => { editingItem.value = null; }
+    editForm.put(`/inventory/${editingItem.value.id}`, { onSuccess: () => { editingItem.value = null; } });
+};
+
+const deleteItem = () => {
+    if (confirm('Are you sure? Deleting a Rig will return its spares to the Depo.')) {
+        router.delete(`/inventory/${editingItem.value.id}`, { onSuccess: () => { editingItem.value = null; } });
+    }
+};
+
+const submitLink = () => {
+    linkForm.post('/inventory/link-spare', { onSuccess: () => { showLinkModal.value = false; linkForm.reset(); } });
+};
+
+const unlinkSpare = (spareId) => {
+    if (confirm('Move this item back to the Warehouse?')) {
+        router.post('/inventory/unlink-spare', { spare_id: spareId }, {
+            onSuccess: () => {
+                // Refresh local view
+                const updatedParent = props.equipment.data.find(i => i.id === selectedItem.value.id);
+                if(updatedParent) selectedItem.value = updatedParent;
+            }
+        });
+    }
+};
+
+const submitLog = () => {
+    logForm.equipment_id = selectedItem.value.id;
+    logForm.post('/inventory/service-logs', {
+        onSuccess: () => {
+            logForm.reset(['running_hours', 'service_type', 'parts_replaced']);
+            showLogForm.value = false;
+        }
     });
 };
 
@@ -76,8 +116,7 @@ const handleTransfer = (id, event) => {
     const siteId = event.target.value;
     if (!siteId) return;
     router.post('/inventory/transfer', {
-        equipment_id: id,
-        to_site_id: siteId,
+        equipment_id: id, to_site_id: siteId,
         transfer_date: new Date().toISOString().split('T')[0]
     });
 };
@@ -91,12 +130,12 @@ const getStatusBadge = (status) => {
 <template>
     <Head title="Fleet & Warehouse" />
 
-    <div class="min-h-screen bg-gray-50 p-4 md:p-8">
+    <div class="min-h-screen bg-gray-50 p-4 md:p-8 text-gray-800">
         <div class="max-w-7xl mx-auto">
 
             <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                    <h1 class="text-2xl font-black text-gray-900 uppercase italic">Fleet Inventory</h1>
+                    <h1 class="text-2xl font-black uppercase italic">LPC Inventory</h1>
                     <div class="flex gap-2 mt-4 bg-gray-100 p-1 rounded-2xl border">
                         <button @click="activeTab = 'fleet'" :class="activeTab === 'fleet' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all">
                             Fleet ({{ equipment.total }})
@@ -127,6 +166,9 @@ const getStatusBadge = (status) => {
                             <td class="px-6 py-4">
                                 <div class="font-bold text-gray-800">{{ item.name }}</div>
                                 <div class="text-[10px] font-mono text-indigo-500 font-bold uppercase">{{ item.serial_number }}</div>
+                                <span v-if="activeTab === 'fleet' && item.spares?.length > 0" class="text-[8px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold uppercase mt-1 inline-block">
+                                    {{ item.spares.length }} Spares Attached
+                                </span>
                             </td>
                             <td class="px-6 py-4">
                                 <span class="text-gray-600 font-bold text-xs block mb-1">{{ item.current_site?.location_name || 'Main Depo' }}</span>
@@ -141,8 +183,9 @@ const getStatusBadge = (status) => {
                                 </span>
                             </td>
                             <td class="px-6 py-4 text-right space-x-2">
-                                <button @click="selectedItem = item; showLogsModal = true" class="text-indigo-600 font-black text-[10px] uppercase underline">History</button>
+                                <button @click="openHistory(item)" class="text-indigo-600 font-black text-[10px] uppercase underline">History</button>
                                 <button @click="openEdit(item)" class="text-amber-600 font-black text-[10px] uppercase underline">Edit</button>
+                                <button v-if="activeTab === 'warehouse'" @click="openLinkModal(item)" class="text-emerald-600 font-black text-[10px] uppercase underline">Link to Rig</button>
                             </td>
                         </tr>
                     </tbody>
@@ -157,20 +200,15 @@ const getStatusBadge = (status) => {
         </div>
 
         <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div class="p-6 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 class="text-lg font-black text-gray-800 uppercase italic">Add New Item</h3>
-                    <button @click="showAddModal = false" class="text-2xl font-light">&times;</button>
-                </div>
-                <form @submit.prevent="submitAdd" class="p-8 space-y-4">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden p-8">
+                <h3 class="text-lg font-black uppercase italic mb-6">Add New Asset</h3>
+                <form @submit.prevent="submitAdd" class="space-y-4">
                     <div class="flex border rounded-xl overflow-hidden mb-2">
                         <button type="button" @click="addForm.is_attachment = 0" class="flex-1 py-2 text-[10px] font-black uppercase" :class="addForm.is_attachment === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-50'">Fleet Rig</button>
                         <button type="button" @click="addForm.is_attachment = 1" class="flex-1 py-2 text-[10px] font-black uppercase" :class="addForm.is_attachment === 1 ? 'bg-indigo-600 text-white' : 'bg-gray-50'">Depo Spare</button>
                     </div>
-
-                    <input v-model="addForm.name" placeholder="Name" class="w-full border-gray-200 rounded-xl" required />
+                    <input v-model="addForm.name" placeholder="Item Name" class="w-full border-gray-200 rounded-xl" required />
                     <input v-model="addForm.serial_number" placeholder="Serial Number" class="w-full border-gray-200 rounded-xl" required />
-
                     <div class="grid grid-cols-2 gap-2">
                         <select v-model="addForm.category_id" class="border-gray-200 rounded-xl text-xs" required>
                             <option value="">Category</option>
@@ -181,20 +219,37 @@ const getStatusBadge = (status) => {
                             <option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }}</option>
                         </select>
                     </div>
-
                     <select v-model="addForm.current_site_id" class="w-full border-gray-200 rounded-xl text-xs" required>
-                        <option value="">Initial Site Location</option>
+                        <option value="">Initial Site</option>
                         <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.location_name }}</option>
                     </select>
+                    <button type="submit" class="w-full py-4 bg-emerald-600 text-white rounded-2xl uppercase font-black text-xs shadow-lg">Save Asset</button>
+                    <button type="button" @click="showAddModal = false" class="w-full text-[10px] font-black text-gray-400 uppercase">Cancel</button>
+                </form>
+            </div>
+        </div>
 
-                    <button type="submit" class="w-full py-4 bg-emerald-600 text-white rounded-2xl uppercase font-black text-xs shadow-lg">Save Item</button>
+        <div v-if="showLinkModal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
+                <h3 class="text-lg font-black uppercase mb-4 italic">Link to Rig</h3>
+                <p class="text-[10px] font-bold text-gray-400 uppercase mb-6 italic">Assigning: {{ linkingSpare?.name }}</p>
+                <form @submit.prevent="submitLink" class="space-y-4">
+                    <select v-model="linkForm.parent_id" class="w-full border-gray-200 rounded-xl px-4 py-3 text-sm" required>
+                        <option value="">Choose a Target Rig...</option>
+                        <option v-for="rig in allRigs" :key="rig.id" :value="rig.id">{{ rig.name }} ({{ rig.serial_number }})</option>
+                    </select>
+                    <button type="submit" class="w-full py-4 bg-indigo-600 text-white rounded-2xl uppercase font-black text-xs">Confirm Link</button>
+                    <button type="button" @click="showLinkModal = false" class="w-full text-[10px] font-black text-gray-400 uppercase">Cancel</button>
                 </form>
             </div>
         </div>
 
         <div v-if="editingItem" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
-                <h3 class="text-lg font-black uppercase mb-6 italic">Edit Machine</h3>
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-black uppercase italic">Edit Details</h3>
+                    <button @click="deleteItem" class="text-[9px] font-black text-red-500 uppercase border border-red-200 px-3 py-1 rounded-xl hover:bg-red-50">Delete Asset</button>
+                </div>
                 <form @submit.prevent="submitUpdate" class="space-y-4">
                     <input v-model="editForm.name" class="w-full border-gray-200 rounded-xl" />
                     <input v-model="editForm.serial_number" class="w-full border-gray-200 rounded-xl" />
@@ -203,25 +258,66 @@ const getStatusBadge = (status) => {
                         <option value="Maintenance">Maintenance</option>
                         <option value="In Stock">In Stock</option>
                     </select>
-                    <button type="submit" class="w-full py-4 bg-indigo-600 text-white rounded-2xl uppercase font-black text-xs shadow-lg">Update</button>
+                    <button type="submit" class="w-full py-4 bg-indigo-600 text-white rounded-2xl uppercase font-black text-xs">Update</button>
+                    <button type="button" @click="editingItem = null" class="w-full text-[10px] font-black text-gray-400 uppercase">Cancel</button>
                 </form>
             </div>
         </div>
 
         <div v-if="showLogsModal && selectedItem" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-8">
+            <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-8">
                 <div class="flex justify-between items-center mb-8 border-b pb-4">
                     <div>
                         <h3 class="text-xl font-black uppercase italic text-gray-900">{{ selectedItem.name }}</h3>
-                        <p class="text-[10px] font-mono text-indigo-500 font-bold">S/N: {{ selectedItem.serial_number }}</p>
+                        <p class="text-[10px] font-mono text-indigo-500 font-bold uppercase">S/N: {{ selectedItem.serial_number }}</p>
                     </div>
                     <button @click="showLogsModal = false" class="text-3xl font-light">&times;</button>
                 </div>
-                <div>
-                    <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Service Records</h4>
+
+                <div v-if="selectedItem.spares?.length > 0" class="mb-8">
+                    <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 italic">Linked Spares/Attachments</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div v-for="s in selectedItem.spares" :key="s.id" class="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex justify-between items-center">
+                            <div>
+                                <p class="font-bold text-xs">{{ s.name }}</p>
+                                <p class="text-[9px] font-mono text-indigo-400 font-bold uppercase">{{ s.serial_number }}</p>
+                            </div>
+                            <button @click="unlinkSpare(s.id)" class="text-[9px] font-black text-red-500 uppercase underline">Unlink</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest italic">Maintenance Log</h4>
+                        <button @click="showLogForm = !showLogForm" class="bg-indigo-600 text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase">
+                            {{ showLogForm ? 'Cancel' : '+ Add Record' }}
+                        </button>
+                    </div>
+
+                    <div v-if="showLogForm" class="bg-gray-50 p-6 rounded-3xl border border-dashed border-indigo-200 mb-6">
+                        <form @submit.prevent="submitLog" class="grid grid-cols-2 gap-4">
+                            <div class="col-span-1">
+                                <label class="text-[9px] font-bold uppercase text-gray-400 ml-2">Service Date</label>
+                                <input v-model="logForm.service_date" type="date" class="w-full border-gray-200 rounded-xl text-xs" required />
+                            </div>
+                            <div class="col-span-1">
+                                <label class="text-[9px] font-bold uppercase text-gray-400 ml-2">Running Hours</label>
+                                <input v-model="logForm.running_hours" type="number" step="0.1" class="w-full border-gray-200 rounded-xl text-xs" placeholder="0.0" required />
+                            </div>
+                            <div class="col-span-2">
+                                <input v-model="logForm.service_type" placeholder="Service Type (e.g. 500H Interval)" class="w-full border-gray-200 rounded-xl text-xs" required />
+                            </div>
+                            <div class="col-span-2">
+                                <textarea v-model="logForm.parts_replaced" placeholder="Work Details & Spares Used..." class="w-full border-gray-200 rounded-xl text-xs" rows="2"></textarea>
+                            </div>
+                            <button type="submit" class="col-span-2 py-3 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px]">Save Record</button>
+                        </form>
+                    </div>
+
                     <div v-if="selectedItem.maintenanceLogs?.length > 0" class="space-y-4">
                         <div v-for="log in selectedItem.maintenanceLogs" :key="log.id" class="p-5 border rounded-3xl bg-gray-50">
-                            <div class="flex justify-between font-black text-[10px] mb-2 text-gray-400 uppercase">
+                            <div class="flex justify-between font-black text-[10px] mb-2 text-gray-400 uppercase tracking-widest">
                                 <span>{{ log.service_date }}</span>
                                 <span class="text-emerald-500">{{ log.running_hours }} HRS</span>
                             </div>
@@ -229,9 +325,10 @@ const getStatusBadge = (status) => {
                             <p class="text-xs text-gray-500 leading-relaxed">{{ log.parts_replaced }}</p>
                         </div>
                     </div>
-                    <p v-else class="text-xs italic text-gray-400 text-center py-4 bg-gray-50 rounded-xl">No records found.</p>
+                    <p v-else class="text-xs italic text-gray-400 text-center py-8 bg-gray-50 rounded-3xl border border-dashed">No service records available for this asset.</p>
                 </div>
             </div>
         </div>
+
     </div>
 </template>

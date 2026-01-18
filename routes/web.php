@@ -41,6 +41,9 @@ Route::middleware('auth')->group(function () {
     // Post route for when the form is submitted
     Route::post('/inventory/transfer', [InventoryController::class, 'storeTransfer'])->name('inventory.transfer.store');
     Route::get('/inventory/{id}/history', [InventoryController::class, 'history'])->name('inventory.history');
+
+    Route::post('/inventory/link-spare', [InventoryController::class, 'linkSpare'])->name('inventory.linkSpare');
+    Route::post('/inventory/unlink-spare', [InventoryController::class, 'unlinkSpare'])->name('inventory.unlinkSpare');
 });
 
 require __DIR__ . '/auth.php';
