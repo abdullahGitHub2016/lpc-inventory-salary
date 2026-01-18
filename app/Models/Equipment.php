@@ -2,12 +2,23 @@
 
 namespace App\Models;
 
+use App\Models\MaintenanceRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Equipment extends Model
 {
-    protected $fillable = ['name', 'serial_number', 'category_id', 'brand_id', 'status', 'current_site_id'];
+    protected $fillable = [
+    'name',
+    'serial_number',
+    'current_site_id',
+    'status',
+    'is_attachment', // ADD THIS
+    'category_id',   // ADD THIS
+    'brand_id',      // ADD THIS
+    'parent_id',
+    'model',
+];
 
     // Relationship to Category
     public function category()
@@ -29,4 +40,14 @@ class Equipment extends Model
     {
         return $this->hasMany(InventoryMovement::class)->orderBy('transfer_date', 'desc');
     }
+
+// Relationship for "Outside" spares
+public function spares() {
+    return $this->hasMany(Equipment::class, 'parent_id');
+}
+
+// Relationship for "Inside" maintenance history
+public function maintenanceLogs() {
+    return $this->hasMany(MaintenanceRecord::class);
+}
 }

@@ -3,276 +3,234 @@ import { useForm, Head, Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 
 const props = defineProps({
-    equipment: Object, // Laravel Paginated Object
+    equipment: Object,    // Main Rigs (is_attachment: 0) - Paginated
+    depoSpares: Array,    // Warehouse Items (is_attachment: 1) - Array
     categories: Array,
     brands: Array,
     sites: Array
 });
 
-// --- STATE CONTROL ---
+// --- STATE ---
+const activeTab = ref('fleet');
 const showAddModal = ref(false);
 const editingItem = ref(null);
+const showLogsModal = ref(false);
+const selectedItem = ref(null);
 const searchQuery = ref('');
 
-// --- SEARCH FILTER ---
-const filteredEquipment = computed(() => {
-    // We search within the .data array of the paginated object
-    return props.equipment.data.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-        item.serial_number.toLowerCase().includes(searchQuery.value.toLowerCase())
-    );
-});
-
-// --- FORMS ---
+// --- ADD FORM ---
 const addForm = useForm({
     name: '',
+    serial_number: '',
     category_id: '',
     brand_id: '',
-    serial_number: '',
     current_site_id: '',
-    status: 'Working'
+    status: 'Working',
+    is_attachment: 0 // Controller uses this to decide where it lands
 });
 
 const editForm = useForm({
     name: '',
-    category_id: '',
-    brand_id: '',
     serial_number: '',
     status: ''
 });
 
-// --- ACTIONS ---
+// --- DATA FILTERING ---
+const filteredData = computed(() => {
+    // IMPORTANT: 'equipment' has a '.data' property because it is paginated
+    const dataSource = activeTab.value === 'fleet' ? props.equipment.data : props.depoSpares;
+    if (!dataSource) return [];
+    if (!searchQuery.value) return dataSource;
+
+    return dataSource.filter(item =>
+        item.name?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+        item.serial_number?.toLowerCase().includes(searchQuery.value.toLowerCase())
+    );
+});
+
+// --- METHODS ---
+const openEdit = (item) => {
+    editingItem.value = item;
+    editForm.name = item.name;
+    editForm.serial_number = item.serial_number;
+    editForm.status = item.status;
+};
+
 const submitAdd = () => {
     addForm.post('/inventory', {
         onSuccess: () => {
             addForm.reset();
             showAddModal.value = false;
         },
+        onError: (err) => console.log(err)
     });
-};
-
-const openEditModal = (item) => {
-    editingItem.value = item;
-    editForm.name = item.name;
-    editForm.serial_number = item.serial_number;
-    editForm.category_id = item.category_id;
-    editForm.brand_id = item.brand_id;
-    editForm.status = item.status;
 };
 
 const submitUpdate = () => {
     editForm.put(`/inventory/${editingItem.value.id}`, {
-        onSuccess: () => editingItem.value = null,
+        onSuccess: () => { editingItem.value = null; }
     });
 };
 
-const deleteItem = (id) => {
-    if (confirm('Permanently delete this item?')) {
-        router.delete(`/inventory/${id}`);
-    }
+const handleTransfer = (id, event) => {
+    const siteId = event.target.value;
+    if (!siteId) return;
+    router.post('/inventory/transfer', {
+        equipment_id: id,
+        to_site_id: siteId,
+        transfer_date: new Date().toISOString().split('T')[0]
+    });
 };
 
 const getStatusBadge = (status) => {
-    const map = {
-        'Working': 'bg-green-100 text-green-700 border-green-200',
-        'Under Repair': 'bg-red-100 text-red-700 border-red-200',
-        'Maintenance': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-    };
-    return map[status] || 'bg-gray-100 text-gray-700 border-gray-200';
+    const map = { 'Working': 'bg-green-100 text-green-700', 'In Stock': 'bg-blue-100 text-blue-700' };
+    return map[status] || 'bg-gray-100 text-gray-700';
 };
 </script>
 
 <template>
-    <Head title="Equipment Inventory" />
+    <Head title="Fleet & Warehouse" />
 
     <div class="min-h-screen bg-gray-50 p-4 md:p-8">
         <div class="max-w-7xl mx-auto">
 
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-6">
-                <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div>
-                        <h1 class="text-2xl font-black text-gray-900 uppercase tracking-tight">LPC Inventory</h1>
-                        <p class="text-sm text-gray-500 font-medium">Manage Rigs, Tools, and Testing Instruments</p>
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <h1 class="text-2xl font-black text-gray-900 uppercase italic">Fleet Inventory</h1>
+                    <div class="flex gap-2 mt-4 bg-gray-100 p-1 rounded-2xl border">
+                        <button @click="activeTab = 'fleet'" :class="activeTab === 'fleet' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all">
+                            Fleet ({{ equipment.total }})
+                        </button>
+                        <button @click="activeTab = 'warehouse'" :class="activeTab === 'warehouse' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all">
+                            Depo ({{ depoSpares.length }})
+                        </button>
                     </div>
-
-                    <div class="flex flex-wrap gap-3 w-full md:w-auto">
-                        <input v-model="searchQuery" type="text" placeholder="Search machine..." class="rounded-xl border-gray-300 shadow-sm focus:ring-indigo-500 w-full md:w-64" />
-                        <button @click="showAddModal = true" class="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-emerald-700 transition shadow-lg shadow-emerald-100">+ Add New</button>
-                        <Link href="/inventory/transfer" class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 text-center">Transfer Equipment</Link>
-                    </div>
+                </div>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <input v-model="searchQuery" placeholder="Search..." class="rounded-xl border-gray-200 text-sm px-4 flex-1 md:w-64" />
+                    <button @click="showAddModal = true" class="bg-emerald-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase shadow-lg">+ Add New</button>
                 </div>
             </div>
 
-            <div class="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
                 <table class="w-full text-left">
-                    <thead class="bg-gray-50 border-b border-gray-100">
-                        <tr>
-                            <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Machine / SN</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type & Brand</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Current Site</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                            <th class="px-6 py-4 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">Actions</th>
+                    <thead class="bg-gray-50 border-b">
+                        <tr class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                            <th class="px-6 py-5">Item Details</th>
+                            <th class="px-6 py-5">Current Site</th>
+                            <th class="px-6 py-5">Status</th>
+                            <th class="px-6 py-5 text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        <tr v-for="item in filteredEquipment" :key="item.id" class="hover:bg-indigo-50/30 transition">
+                    <tbody class="divide-y divide-gray-100 text-sm">
+                        <tr v-for="item in filteredData" :key="item.id">
                             <td class="px-6 py-4">
                                 <div class="font-bold text-gray-800">{{ item.name }}</div>
-                                <div class="text-xs font-mono text-indigo-500 uppercase">{{ item.serial_number }}</div>
+                                <div class="text-[10px] font-mono text-indigo-500 font-bold uppercase">{{ item.serial_number }}</div>
                             </td>
                             <td class="px-6 py-4">
-                                <div class="text-sm font-semibold text-gray-700">{{ item.brand?.name || 'Generic' }}</div>
-                                <div class="text-[10px] font-bold text-gray-400 uppercase">{{ item.category?.name || 'Uncategorized' }}</div>
+                                <span class="text-gray-600 font-bold text-xs block mb-1">{{ item.current_site?.location_name || 'Main Depo' }}</span>
+                                <select @change="handleTransfer(item.id, $event)" class="text-[9px] border-none bg-gray-100 rounded-lg p-1 w-28 cursor-pointer">
+                                    <option value="">Move To...</option>
+                                    <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.location_name }}</option>
+                                </select>
                             </td>
                             <td class="px-6 py-4">
-                                <span class="text-sm font-medium text-gray-600 italic">{{ item.current_site?.location_name || 'Main Store' }}</span>
+                                <span :class="getStatusBadge(item.status)" class="px-3 py-1 rounded-full text-[9px] font-black border uppercase">
+                                    {{ item.status }}
+                                </span>
                             </td>
-                            <td class="px-6 py-4">
-                                <span :class="getStatusBadge(item.status)" class="px-3 py-1 rounded-full text-[10px] font-black border uppercase">{{ item.status }}</span>
-                            </td>
-                            <td class="px-6 py-4 text-right space-x-3">
-                                <button @click="openEditModal(item)" class="text-indigo-600 font-black text-[10px] hover:underline">EDIT</button>
-                                <button @click="deleteItem(item.id)" class="text-red-400 font-black text-[10px] hover:underline">DELETE</button>
+                            <td class="px-6 py-4 text-right space-x-2">
+                                <button @click="selectedItem = item; showLogsModal = true" class="text-indigo-600 font-black text-[10px] uppercase underline">History</button>
+                                <button @click="openEdit(item)" class="text-amber-600 font-black text-[10px] uppercase underline">Edit</button>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <div class="md:hidden space-y-4">
-                <div v-for="item in filteredEquipment" :key="'mob-' + item.id" class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-                    <div class="flex justify-between items-start mb-3">
-                        <div>
-                            <h3 class="font-bold text-gray-900">{{ item.name }}</h3>
-                            <p class="text-xs font-mono text-indigo-500">{{ item.serial_number }}</p>
-                        </div>
-                        <span :class="getStatusBadge(item.status)" class="px-2 py-1 rounded-lg text-[9px] font-black border uppercase">{{ item.status }}</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 text-[10px] mb-4">
-                        <div class="bg-gray-50 p-2 rounded-lg"><span class="text-gray-400 block uppercase">Brand</span><span class="font-bold text-gray-700">{{ item.brand?.name || '-' }}</span></div>
-                        <div class="bg-gray-50 p-2 rounded-lg"><span class="text-gray-400 block uppercase">Category</span><span class="font-bold text-gray-700">{{ item.category?.name || '-' }}</span></div>
-                    </div>
-                    <div class="flex gap-2">
-                        <button @click="openEditModal(item)" class="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase">Edit</button>
-                        <button @click="deleteItem(item.id)" class="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-[10px] font-black uppercase">Delete</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-6 flex items-center justify-between bg-white px-4 py-3 sm:px-6 rounded-2xl border border-gray-200">
-                <div class="flex flex-1 justify-between sm:hidden">
-                    <Link :href="equipment.prev_page_url || '#'" class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700" :class="!equipment.prev_page_url ? 'opacity-50' : 'hover:bg-gray-50'">Previous</Link>
-                    <Link :href="equipment.next_page_url || '#'" class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700" :class="!equipment.next_page_url ? 'opacity-50' : 'hover:bg-gray-50'">Next</Link>
-                </div>
-                <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                    <div>
-                        <p class="text-sm text-gray-700">
-                            Showing <span class="font-medium">{{ equipment.from }}</span> to <span class="font-medium">{{ equipment.to }}</span> of <span class="font-medium">{{ equipment.total }}</span> results
-                        </p>
-                    </div>
-                    <div>
-                        <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm">
-                            <Link v-for="(link, k) in equipment.links" :key="k" :href="link.url || '#'" v-html="link.label"
-                                class="relative inline-flex items-center px-4 py-2 text-sm font-semibold focus:z-20"
-                                :class="[
-                                    link.active ? 'z-10 bg-indigo-600 text-white' : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50',
-                                    !link.url ? 'opacity-50 cursor-not-allowed' : ''
-                                ]" />
-                        </nav>
-                    </div>
-                </div>
+            <div v-if="activeTab === 'fleet' && equipment.links.length > 3" class="flex justify-center gap-1 py-8">
+                <Link v-for="(link, k) in equipment.links" :key="k" :href="link.url || '#'" v-html="link.label"
+                      class="px-4 py-2 rounded-xl text-xs font-bold border"
+                      :class="[link.active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600', !link.url ? 'opacity-30' : '']" />
             </div>
         </div>
 
-        <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/20">
-                <div class="p-6 border-b flex justify-between items-center bg-gray-50/50">
-                    <h3 class="text-xl font-black text-gray-800 uppercase tracking-tight">New Asset Registration</h3>
-                    <button @click="showAddModal = false" class="text-gray-400 hover:text-gray-950 transition text-2xl">&times;</button>
-                </div>
-                <form @submit.prevent="submitAdd" class="p-8 space-y-5">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Machine Name</label>
-                            <input v-model="addForm.name" type="text" class="w-full mt-1.5 border-gray-200 rounded-xl focus:ring-indigo-500" required />
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Serial Number</label>
-                            <input v-model="addForm.serial_number" type="text" class="w-full mt-1.5 border-gray-200 rounded-xl focus:ring-indigo-500" required />
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Category</label>
-                            <select v-model="addForm.category_id" class="w-full mt-1.5 border-gray-200 rounded-xl focus:ring-indigo-500" required>
-                                <option value="" disabled>-- Select Type --</option>
-                                <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Brand</label>
-                            <select v-model="addForm.brand_id" class="w-full mt-1.5 border-gray-200 rounded-xl focus:ring-indigo-500" required>
-                                <option value="" disabled>-- Select Brand --</option>
-                                <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Initial Site</label>
-                        <select v-model="addForm.current_site_id" class="w-full mt-1.5 border-gray-300 rounded-xl" required>
-                            <option value="">-- Choose Storage/Site --</option>
-                            <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.location_name }}</option>
-                        </select>
-                    </div>
-                    <div class="flex gap-4 pt-4 border-t border-gray-100">
-                        <button type="button" @click="showAddModal = false" class="flex-1 py-3.5 bg-gray-100 text-gray-600 rounded-2xl font-black uppercase text-xs">Cancel</button>
-                        <button type="submit" class="flex-1 py-3.5 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs">Register Asset</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <div v-if="editingItem" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div class="p-6 border-b bg-gray-50/50">
-                    <h3 class="text-lg font-black text-gray-800 uppercase">Update Equipment Info</h3>
+                <div class="p-6 border-b bg-gray-50 flex justify-between items-center">
+                    <h3 class="text-lg font-black text-gray-800 uppercase italic">Add New Item</h3>
+                    <button @click="showAddModal = false" class="text-2xl font-light">&times;</button>
                 </div>
-                <form @submit.prevent="submitUpdate" class="p-8 space-y-4">
-                    <div>
-                        <label class="text-[10px] font-black text-gray-400 uppercase">Machine Name</label>
-                        <input v-model="editForm.name" type="text" class="w-full mt-1.5 border-gray-200 rounded-xl" />
+                <form @submit.prevent="submitAdd" class="p-8 space-y-4">
+                    <div class="flex border rounded-xl overflow-hidden mb-2">
+                        <button type="button" @click="addForm.is_attachment = 0" class="flex-1 py-2 text-[10px] font-black uppercase" :class="addForm.is_attachment === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-50'">Fleet Rig</button>
+                        <button type="button" @click="addForm.is_attachment = 1" class="flex-1 py-2 text-[10px] font-black uppercase" :class="addForm.is_attachment === 1 ? 'bg-indigo-600 text-white' : 'bg-gray-50'">Depo Spare</button>
                     </div>
-                    <div>
-                        <label class="text-[10px] font-black text-gray-400 uppercase">Serial Number</label>
-                        <input v-model="editForm.serial_number" type="text" class="w-full mt-1.5 border-gray-200 rounded-xl" />
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-[10px] font-black text-gray-400 uppercase">Category</label>
-                            <select v-model="editForm.category_id" class="w-full mt-1.5 border-gray-200 rounded-xl">
-                                <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-gray-400 uppercase">Brand</label>
-                            <select v-model="editForm.brand_id" class="w-full mt-1.5 border-gray-200 rounded-xl">
-                                <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Operational Status</label>
-                        <select v-model="editForm.status" class="w-full mt-1.5 border-gray-200 rounded-xl">
-                            <option value="Working">Working</option>
-                            <option value="Under Repair">Under Repair</option>
-                            <option value="Maintenance">Maintenance</option>
+
+                    <input v-model="addForm.name" placeholder="Name" class="w-full border-gray-200 rounded-xl" required />
+                    <input v-model="addForm.serial_number" placeholder="Serial Number" class="w-full border-gray-200 rounded-xl" required />
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <select v-model="addForm.category_id" class="border-gray-200 rounded-xl text-xs" required>
+                            <option value="">Category</option>
+                            <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                        </select>
+                        <select v-model="addForm.brand_id" class="border-gray-200 rounded-xl text-xs" required>
+                            <option value="">Brand</option>
+                            <option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }}</option>
                         </select>
                     </div>
-                    <div class="flex gap-3 pt-6">
-                        <button type="button" @click="editingItem = null" class="flex-1 py-3.5 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-xs">Close</button>
-                        <button type="submit" class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs">Save Changes</button>
-                    </div>
+
+                    <select v-model="addForm.current_site_id" class="w-full border-gray-200 rounded-xl text-xs" required>
+                        <option value="">Initial Site Location</option>
+                        <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.location_name }}</option>
+                    </select>
+
+                    <button type="submit" class="w-full py-4 bg-emerald-600 text-white rounded-2xl uppercase font-black text-xs shadow-lg">Save Item</button>
                 </form>
+            </div>
+        </div>
+
+        <div v-if="editingItem" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
+                <h3 class="text-lg font-black uppercase mb-6 italic">Edit Machine</h3>
+                <form @submit.prevent="submitUpdate" class="space-y-4">
+                    <input v-model="editForm.name" class="w-full border-gray-200 rounded-xl" />
+                    <input v-model="editForm.serial_number" class="w-full border-gray-200 rounded-xl" />
+                    <select v-model="editForm.status" class="w-full border-gray-200 rounded-xl">
+                        <option value="Working">Working</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="In Stock">In Stock</option>
+                    </select>
+                    <button type="submit" class="w-full py-4 bg-indigo-600 text-white rounded-2xl uppercase font-black text-xs shadow-lg">Update</button>
+                </form>
+            </div>
+        </div>
+
+        <div v-if="showLogsModal && selectedItem" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-8">
+                <div class="flex justify-between items-center mb-8 border-b pb-4">
+                    <div>
+                        <h3 class="text-xl font-black uppercase italic text-gray-900">{{ selectedItem.name }}</h3>
+                        <p class="text-[10px] font-mono text-indigo-500 font-bold">S/N: {{ selectedItem.serial_number }}</p>
+                    </div>
+                    <button @click="showLogsModal = false" class="text-3xl font-light">&times;</button>
+                </div>
+                <div>
+                    <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Service Records</h4>
+                    <div v-if="selectedItem.maintenanceLogs?.length > 0" class="space-y-4">
+                        <div v-for="log in selectedItem.maintenanceLogs" :key="log.id" class="p-5 border rounded-3xl bg-gray-50">
+                            <div class="flex justify-between font-black text-[10px] mb-2 text-gray-400 uppercase">
+                                <span>{{ log.service_date }}</span>
+                                <span class="text-emerald-500">{{ log.running_hours }} HRS</span>
+                            </div>
+                            <p class="font-black text-gray-800 text-sm uppercase mb-1">{{ log.service_type }}</p>
+                            <p class="text-xs text-gray-500 leading-relaxed">{{ log.parts_replaced }}</p>
+                        </div>
+                    </div>
+                    <p v-else class="text-xs italic text-gray-400 text-center py-4 bg-gray-50 rounded-xl">No records found.</p>
+                </div>
             </div>
         </div>
     </div>

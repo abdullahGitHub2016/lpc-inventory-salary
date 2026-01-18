@@ -13,4 +13,10 @@ class Employee extends Model
         'designation',
         'total_salary'
     ];
+
+// To see which repairs a mechanic has performed
+public function maintenancePerformed() {
+    return $this->hasMany(MaintenanceRecord::class, 'mechanic_id');
+}
+
 }
