@@ -47,7 +47,9 @@ public function spares() {
 }
 
 // Relationship for "Inside" maintenance history
-public function maintenanceLogs() {
-    return $this->hasMany(MaintenanceRecord::class);
+public function maintenanceLogs() // Frontend expects this name
+{
+    // Point it to your existing MaintenanceRecord model
+    return $this->hasMany(MaintenanceRecord::class, 'equipment_id')->orderBy('service_date', 'DESC');
 }
 }

@@ -1,10 +1,12 @@
 <?php
 
-use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SalaryController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
 
 
 
@@ -44,6 +46,23 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/inventory/link-spare', [InventoryController::class, 'linkSpare'])->name('inventory.linkSpare');
     Route::post('/inventory/unlink-spare', [InventoryController::class, 'unlinkSpare'])->name('inventory.unlinkSpare');
+});
+
+
+Route::middleware(['auth'])->group(function () {
+
+    // 1. Main Salary Dashboard (The View you created)
+    Route::get('/salary', [SalaryController::class, 'index'])->name('salary.index');
+
+    // 2. Advanced Management (Store the deduction)
+    Route::post('/salary/advance', [SalaryController::class, 'storeAdvance'])->name('salary.advance.store');
+
+    // 3. Leave Management (The 3-day vs 5-day logic)
+    // This route will be called when an employee returns to mark their attendance
+    Route::post('/salary/leave/return', [SalaryController::class, 'processReturn'])->name('salary.leave.return');
+
+    // 4. (Optional) Process Final Monthly Payout
+    Route::post('/salary/process-monthly', [SalaryController::class, 'processMonthly'])->name('salary.process');
 });
 
 require __DIR__ . '/auth.php';

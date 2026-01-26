@@ -6,26 +6,26 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        // In create_salary_advances_table
-        Schema::create('salary_advances', function (Blueprint $table) {
+        Schema::create('advance_reasons', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('employee_id')->constrained('employees');
-            $table->decimal('amount', 12, 2);
-            $table->date('advance_date');
+            $table->string('reason_name'); // e.g., Medical, Family, Education
             $table->timestamps();
+        });
+
+        // Now, update salary_advances to use the ID instead of text
+        Schema::table('salary_advances', function (Blueprint $table) {
+            $table->foreignId('reason_id')->nullable()->after('employee_id')->constrained('advance_reasons');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('salary_advances');
+        Schema::table('salary_advances', function (Blueprint $table) {
+            $table->dropForeign(['reason_id']);
+            $table->dropColumn('reason_id');
+        });
+        Schema::dropIfExists('advance_reasons');
     }
 };
