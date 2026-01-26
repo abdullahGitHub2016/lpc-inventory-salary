@@ -6,7 +6,9 @@ use \App\Models\AdvanceReason;
 use App\Models\Employee;
 use App\Models\Leave;
 use App\Models\SalaryAdvance;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class SalaryController extends Controller
@@ -40,7 +42,7 @@ class SalaryController extends Controller
             ];
         });
 
-        return Inertia::render('Salary/Index', [
+        return Inertia::render('Salary/SalaryIndex', [
             'employees'      => $employees,
             'advanceReasons' => \App\Models\AdvanceReason::all(),
             'filters'        => (object) $request->only(['search_id', 'date'])
@@ -173,4 +175,81 @@ class SalaryController extends Controller
             }
         }
     }
+    public function processMonthly(Request $request)
+{
+    // 1. Prepare Month/Year info
+    $now = Carbon::now();
+    $monthName = $now->format('F');
+    $year = $now->year;
+    $monthNumber = $now->month;
+
+    // Prevent double processing if the month is already archived
+    $exists = DB::table('salary_sheets')
+        ->where('month', $monthName)
+        ->where('year', $year)
+        ->exists();
+
+    if ($exists) {
+        return back()->with('error', "The salary for $monthName $year has already been processed.");
+    }
+
+    DB::beginTransaction();
+    try {
+        // 2. Get all employees with their current live balances
+        // This logic must match exactly how you display it on the Live Dashboard
+        $employees = Employee::all()->map(function($emp) {
+            $totalAdvance = SalaryAdvance::where('employee_id', $emp->id)
+                            ->whereMonth('advance_date', Carbon::now()->month)
+                            ->sum('amount');
+
+            return [
+                'employee_id_string' => $emp->employee_id, // e.g. "LPC-001"
+                'name' => $emp->name,
+                'base_salary' => $emp->base_salary,
+                'advance' => $totalAdvance,
+                'net_payable' => $emp->base_salary - $totalAdvance,
+            ];
+        });
+
+        $totalPayout = $employees->sum('net_payable');
+
+        // 3. Create the Archive Header
+        $salarySheetId = DB::table('salary_sheets')->insertGetId([
+            'month' => $monthName,
+            'month_number' => $monthNumber,
+            'year' => $year,
+            'total_payout' => $totalPayout,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // 4. Save snapshots of every employee
+        foreach ($employees as $data) {
+            DB::table('salary_sheet_details')->insert([
+                'salary_sheet_id' => $salarySheetId,
+                'employee_id' => $data['employee_id_string'],
+                'name' => $data['name'],
+                'base_salary' => $data['base_salary'],
+                'advance' => $data['advance'],
+                'net_payable' => $data['net_payable'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        // 5. RESET THE LIVE LEDGER
+        // Delete or mark current month advances as 'processed'
+        // This clears the "Advance" column on your Live Dashboard for next month
+        SalaryAdvance::whereMonth('advance_date', $monthNumber)
+                     ->whereYear('advance_date', $year)
+                     ->delete();
+
+        DB::commit();
+        return redirect()->route('salary.archive.index')->with('success', "Salary for $monthName processed and archived successfully.");
+
+    } catch (\Exception $e) {
+        DB::rollback();
+        return back()->with('error', 'Error processing salary: ' . $e->getMessage());
+    }
+}
 }
