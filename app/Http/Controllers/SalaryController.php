@@ -30,7 +30,7 @@ public function index(Request $request)
     }
 
     // 3. Paginate the results (e.g., 10 per page)
-    $employees = $query->paginate(3)->withQueryString()->through(function ($employee) {
+    $employees = $query->paginate(10)->withQueryString()->through(function ($employee) {
         $history = $employee->advances()
             ->with('reason')
             ->orderBy('advance_date', 'desc')
@@ -255,6 +255,32 @@ public function index(Request $request)
     } catch (\Exception $e) {
         DB::rollback();
         return back()->with('error', 'Error processing salary: ' . $e->getMessage());
+    }
+}
+
+// app/Http/Controllers/SalaryController.php
+
+public function destroyArchive($month, $year)
+{
+    DB::beginTransaction();
+    try {
+        $archive = DB::table('salary_sheets')
+            ->where('month', $month)
+            ->where('year', $year)
+            ->first();
+
+        if ($archive) {
+            // Delete snapshots first due to foreign key constraints
+            DB::table('salary_sheet_details')->where('salary_sheet_id', $archive->id)->delete();
+            DB::table('salary_sheets')->where('id', $archive->id)->delete();
+
+            DB::commit();
+            return redirect()->back()->with('success', 'Archive deleted.');
+        }
+        return back()->with('error', 'Not found.');
+    } catch (\Exception $e) {
+        DB::rollback();
+        return back()->with('error', 'Failed: ' . $e->getMessage());
     }
 }
 }

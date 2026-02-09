@@ -73,6 +73,8 @@ Route::middleware(['auth'])->group(function () {
     // --- 4. MONTH-END CLOSING ---
     // This is the route that "Freezes" the current month and moves it to Archive
     Route::post('/salary/process-monthly', [SalaryController::class, 'processMonthly'])->name('salary.process');
+    Route::delete('/salary/archive/{month}/{year}', [SalaryController::class, 'destroyArchive'])
+    ->name('salary.archive.destroy');
 });
 
 Route::get('/seed-history', function () {

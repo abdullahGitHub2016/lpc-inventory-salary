@@ -13,10 +13,19 @@ class SalaryArchiveController extends Controller
     /**
      * Display the Archive Grid (SalaryArchiveIndex.vue)
      */
+    // app/Http/Controllers/SalaryArchiveController.php
+
     public function index(Request $request)
     {
-        // Default to 2025 if no year is selected, since that's what we seeded
-        $year = $request->input('year', 2025);
+        // Get the selected year or default to the current year
+        $year = $request->input('year', date('Y'));
+
+        // Fetch unique years from the database to populate the dropdown
+        $availableYears = DB::table('salary_sheets')
+            ->select('year')
+            ->distinct()
+            ->orderBy('year', 'desc')
+            ->pluck('year');
 
         $history = DB::table('salary_sheets')
             ->where('year', $year)
@@ -25,6 +34,7 @@ class SalaryArchiveController extends Controller
 
         return Inertia::render('Salary/SalaryArchiveIndex', [
             'history' => $history,
+            'availableYears' => $availableYears, // Send the real years list
             'filters' => [
                 'year' => (int)$year
             ]
