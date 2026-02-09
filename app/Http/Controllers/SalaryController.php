@@ -13,41 +13,46 @@ use Inertia\Inertia;
 
 class SalaryController extends Controller
 {
-    public function index(Request $request)
-    {
-        // 1. Start the query with the advances relationship
-        $query = Employee::with(['advances']);
+    // app/Http/Controllers/SalaryController.php
 
-        // 2. Filter by Employee ID (the string version like EMP-001)
-        if ($request->filled('search_id')) {
-            $query->where('employee_id', 'like', '%' . $request->search_id . '%');
-        }
+public function index(Request $request)
+{
+    // 1. Initialize query with relationships
+    $query = Employee::query();
 
-        $employees = $query->get()->map(function ($employee) {
-            // Get all advances, sorted by date
-            $history = $employee->advances()
-                ->with('reason') // Load the reason relationship
-                ->orderBy('advance_date', 'desc')
-                ->get();
-
-            return [
-                'id'            => $employee->id,
-                'employee_id'   => $employee->employee_id,
-                'name'          => $employee->name,
-                'base_salary'   => (float) $employee->total_salary,
-                'advance'       => (float) $history->where('status', 'pending')->sum('amount'),
-                'net_payable'   => (float) ($employee->total_salary - $history->where('status', 'pending')->sum('amount')),
-                // This is the history array for the modal
-                'advance_history' => $history
-            ];
+    // 2. Search by Name or Employee ID
+    if ($request->filled('search')) {
+        $search = $request->search;
+        $query->where(function($q) use ($search) {
+            $q->where('name', 'like', '%' . $search . '%')
+              ->orWhere('employee_id', 'like', '%' . $search . '%');
         });
-
-        return Inertia::render('Salary/SalaryIndex', [
-            'employees'      => $employees,
-            'advanceReasons' => \App\Models\AdvanceReason::all(),
-            'filters'        => (object) $request->only(['search_id', 'date'])
-        ]);
     }
+
+    // 3. Paginate the results (e.g., 10 per page)
+    $employees = $query->paginate(3)->withQueryString()->through(function ($employee) {
+        $history = $employee->advances()
+            ->with('reason')
+            ->orderBy('advance_date', 'desc')
+            ->get();
+
+        return [
+            'id'            => $employee->id,
+            'employee_id'   => $employee->employee_id,
+            'name'          => $employee->name,
+            'base_salary'   => (float) $employee->total_salary,
+            'advance'       => (float) $history->where('status', 'pending')->sum('amount'),
+            'net_payable'   => (float) ($employee->total_salary - $history->where('status', 'pending')->sum('amount')),
+            'advance_history' => $history
+        ];
+    });
+
+    return Inertia::render('Salary/SalaryIndex', [
+        'employees'      => $employees, // Now a paginated object
+        'advanceReasons' => \App\Models\AdvanceReason::all(),
+        'filters'        => $request->only(['search'])
+    ]);
+}
     /**
      * Store the advance taken by an employee
      */

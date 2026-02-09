@@ -1,20 +1,31 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
 import { useForm, router, Head, Link } from '@inertiajs/vue3';
+import Pagination from '@/Components/Pagination.vue';
 
 const props = defineProps({
-    employees: { type: Array, default: () => [] },
+    // Changed to Object to accommodate Laravel Paginator (data, links, etc.)
+    employees: { type: Object, default: () => ({ data: [] }) },
     advanceReasons: { type: Array, default: () => [] },
+    filters: { type: Object, default: () => ({ search: '' }) }
 });
 
-// A local ref to keep track of the last employee we edited
 const lastEditedId = ref(null);
+const searchQuery = ref(props.filters.search || '');
 
-// FORCED SORTING:
-// 1. If an ID matches 'lastEditedId', it goes to the top (return -1)
-// 2. Otherwise, sort by ID descending (newest entries first)
+// --- LIVE SEARCH (Backend Sync) ---
+watch(searchQuery, (value) => {
+    router.get(route('salary.index'), { search: value }, {
+        preserveState: true,
+        replace: true,
+        preserveScroll: true
+    });
+});
+
+// --- FIXED SORTING (Accessing .data) ---
 const sortedEmployees = computed(() => {
-    return [...props.employees].sort((a, b) => {
+    const dataArray = props.employees.data || [];
+    return [...dataArray].sort((a, b) => {
         if (a.id === lastEditedId.value) return -1;
         if (b.id === lastEditedId.value) return 1;
         return b.id - a.id;
@@ -33,28 +44,33 @@ const advanceForm = useForm({
     advance_date: new Date().toISOString().split('T')[0]
 });
 
+// --- MODAL CALCULATIONS ---
 const foundEmployee = computed(() => {
     if (!modalSearchId.value) return null;
-    return props.employees.find(emp =>
+    // Search within the current paginated data array
+    return props.employees.data.find(emp =>
         emp.employee_id.trim().toUpperCase() === modalSearchId.value.trim().toUpperCase()
     );
 });
 
-const showInvalidError = computed(() => modalSearchId.value.length >= 3 && !foundEmployee.value);
-
-watch(foundEmployee, (newVal) => { advanceForm.employee_id = newVal ? newVal.id : ''; });
-
 const liveNetPayable = computed(() => {
     if (!foundEmployee.value) return 0;
-    return parseFloat(foundEmployee.value.base_salary || 0) - parseFloat(foundEmployee.value.advance || 0) - (parseFloat(advanceForm.amount) || 0);
+    const base = parseFloat(foundEmployee.value.base_salary || 0);
+    const existingAdvance = parseFloat(foundEmployee.value.advance || 0);
+    const newAmount = parseFloat(advanceForm.amount || 0);
+    return base - existingAdvance - newAmount;
+});
+
+const showInvalidError = computed(() => modalSearchId.value.length >= 3 && !foundEmployee.value);
+
+watch(foundEmployee, (newVal) => {
+    advanceForm.employee_id = newVal ? newVal.id : '';
 });
 
 const submitAdvance = () => {
     advanceForm.post(route('salary.advance.store'), {
         onSuccess: () => {
-            // CAPTURE THE ID BEFORE RESETTING
             lastEditedId.value = advanceForm.employee_id;
-
             showAdvanceModal.value = false;
             advanceForm.reset();
             modalSearchId.value = '';
@@ -62,32 +78,29 @@ const submitAdvance = () => {
     });
 };
 
-// --- MODAL: HISTORY LEDGER ---
-const showDetailsModal = ref(false);
-const selectedEmp = ref(null);
+// --- PRINT & PROCESS ---
+const printLedger = () => window.print();
 
-const sortedHistory = computed(() => {
-    if (!selectedEmp.value?.advance_history) return [];
-    return [...selectedEmp.value.advance_history].sort((a, b) => b.id - a.id);
-});
-
-const openDetails = (emp) => { selectedEmp.value = emp; showDetailsModal.value = true; };
-const formatDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 const confirmMonthlyProcess = () => {
-    if (confirm("Are you sure? This will freeze this month's data and reset all advances for the new month.")) {
+    if (confirm("Are you sure? This will freeze this month's data and reset all advances.")) {
         router.post(route('salary.process'));
     }
 };
+
+// --- MODAL: HISTORY ---
+const showDetailsModal = ref(false);
+const selectedEmp = ref(null);
+const openDetails = (emp) => { selectedEmp.value = emp; showDetailsModal.value = true; };
+const formatDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 </script>
 
 <template>
-
     <Head title="Payroll Master" />
 
-    <div class="min-h-screen bg-gray-100 p-6 font-sans text-slate-900">
+    <div class="min-h-screen bg-gray-100 p-6 font-sans text-slate-900 print:bg-white print:p-0">
         <div class="max-w-6xl mx-auto">
 
-            <div class="flex items-end justify-between mb-8">
+            <div class="flex items-end justify-between mb-8 print:hidden">
                 <div class="flex items-center gap-6">
                     <div>
                         <h1 class="text-3xl font-black tracking-tight text-slate-900 uppercase italic">
@@ -97,212 +110,210 @@ const confirmMonthlyProcess = () => {
                             Active Month: {{ currentMonthName }}
                         </p>
                     </div>
-
-                    <Link :href="route('salary.archive.index')"
-                        class="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:shadow-sm transition-all group">
-                    <span class="text-lg group-hover:scale-110 transition-transform">📂</span>
-                    <div class="text-left">
-                        <p class="text-[8px] font-black uppercase tracking-widest leading-none">View</p>
-                        <p class="text-[10px] font-black uppercase tracking-tight italic">Archives</p>
-                    </div>
+                    <Link :href="route('salary.archive.index')" class="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-slate-500 hover:text-indigo-600 transition-all">
+                        <span class="text-lg">📂</span>
+                        <p class="text-[10px] font-black uppercase italic">Archives</p>
                     </Link>
                 </div>
 
                 <div class="flex items-center gap-3">
-                    <button @click="confirmMonthlyProcess"
-                        class="bg-white border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50 px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all">
+                    <input v-model="searchQuery" type="text" placeholder="Search Name/ID..."
+                        class="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 w-64 shadow-sm" />
+
+                    <button @click="printLedger" class="bg-slate-800 text-white px-5 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-colors">
+                        Print 🖨️
+                    </button>
+
+                    <button @click="confirmMonthlyProcess" class="bg-white border-2 border-emerald-500 text-emerald-600 px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-50 transition-colors">
                         Close Month
                     </button>
 
-                    <button @click="showAdvanceModal = true"
-                        class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 active:scale-95 transition-all">
+                    <button @click="showAdvanceModal = true" class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all">
                         + New Advance
                     </button>
                 </div>
             </div>
 
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-white rounded-[32px] shadow-sm border border-slate-200 overflow-hidden print:border-none print:shadow-none">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="bg-slate-50 border-b border-slate-200">
-                            <th
-                                class="px-6 py-4 font-bold text-slate-500 uppercase text-[10px] tracking-wider text-left italic">
-                                Staff Info</th>
-                            <th
-                                class="px-6 py-4 font-bold text-slate-500 uppercase text-[10px] tracking-wider text-right italic">
-                                Salary</th>
-                            <th
-                                class="px-6 py-4 font-bold text-red-500 uppercase text-[10px] tracking-wider text-right italic">
-                                Monthly Advance</th>
-                            <th
-                                class="px-6 py-4 font-bold text-indigo-600 uppercase text-[10px] tracking-wider text-right italic">
-                                Net Payable</th>
-                            <th
-                                class="px-6 py-4 font-bold text-slate-500 uppercase text-[10px] tracking-wider text-center italic">
-                                Action</th>
+                            <th class="px-6 py-4 font-bold text-slate-500 uppercase text-[10px] text-left italic">Staff Info</th>
+                            <th class="px-6 py-4 font-bold text-slate-500 uppercase text-[10px] text-right italic">Base Salary</th>
+                            <th class="px-6 py-4 font-bold text-red-500 uppercase text-[10px] text-right italic">Pending Advance</th>
+                            <th class="px-6 py-4 font-bold text-indigo-600 uppercase text-[10px] text-right italic">Net Payable</th>
+                            <th class="px-6 py-4 font-bold text-slate-500 uppercase text-[10px] text-center italic print:hidden">History</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         <tr v-for="emp in sortedEmployees" :key="emp.id"
-                            :class="[emp.id === lastEditedId ? 'bg-indigo-50/50 border-l-4 border-l-indigo-500' : 'hover:bg-slate-50/80']"
-                            class="transition-all duration-500">
+                            :class="[emp.id === lastEditedId ? 'bg-indigo-50/50 border-l-4 border-l-indigo-500' : 'hover:bg-slate-50/50']">
                             <td class="px-6 py-4">
-                                <div class="flex items-center gap-2">
-                                    <div v-if="emp.id === lastEditedId"
-                                        class="h-2 w-2 bg-indigo-500 rounded-full animate-ping"></div>
-                                    <div class="font-bold text-slate-800 uppercase">{{ emp.name }}</div>
-                                </div>
-                                <div class="text-[10px] text-slate-400 font-bold tracking-widest">{{ emp.employee_id }}
-                                </div>
+                                <div class="font-bold text-slate-800 uppercase text-xs">{{ emp.name }}</div>
+                                <div class="text-[10px] text-slate-400 font-bold font-mono">{{ emp.employee_id }}</div>
                             </td>
-                            <td class="px-6 py-4 text-right font-medium text-slate-500">৳{{
-                                emp.base_salary.toLocaleString() }}</td>
+                            <td class="px-6 py-4 text-right font-medium text-slate-500 italic">৳{{ emp.base_salary.toLocaleString() }}</td>
                             <td class="px-6 py-4 text-right">
-                                <span v-if="emp.advance > 0" class="text-red-500 font-bold">৳{{
-                                    emp.advance.toLocaleString() }}</span>
-                                <span v-else class="text-slate-200">৳0.00</span>
+                                <span v-if="emp.advance > 0" class="text-red-500 font-bold italic">৳{{ emp.advance.toLocaleString() }}</span>
+                                <span v-else class="text-slate-200 italic">৳0</span>
                             </td>
                             <td class="px-6 py-4 text-right">
-                                <span
-                                    class="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold border border-indigo-100 italic">
+                                <span class="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-black border border-indigo-100 italic">
                                     ৳{{ emp.net_payable.toLocaleString() }}
                                 </span>
                             </td>
-                            <td class="px-6 py-4 text-center">
-                                <button @click="openDetails(emp)"
-                                    class="text-slate-300 hover:text-indigo-600 transition-colors">
-                                    <span class="text-xl">📄</span>
-                                </button>
+                            <td class="px-6 py-4 text-center print:hidden">
+                                <button @click="openDetails(emp)" class="text-xl hover:scale-125 transition-transform">📄</button>
                             </td>
+                        </tr>
+                        <tr v-if="sortedEmployees.length === 0">
+                            <td colspan="5" class="py-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-[0.4em]">No matching records</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-        </div>
 
-        <div v-if="showAdvanceModal"
-            class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div
-                class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-                <div class="p-6 border-b border-slate-100 flex justify-between items-center">
-                    <h2 class="font-bold text-slate-800 uppercase text-sm tracking-widest italic">Verify & Add</h2>
-                    <button @click="showAdvanceModal = false"
-                        class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                </div>
-
-                <form @submit.prevent="submitAdvance" class="p-6 space-y-6">
-                    <div>
-                        <label
-                            class="block text-[10px] font-bold text-slate-400 uppercase mb-2 ml-1 tracking-widest">Input
-                            Employee ID</label>
-                        <input v-model="modalSearchId" type="text" placeholder="Full ID Only"
-                            class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none uppercase tracking-widest"
-                            autocomplete="off" />
-                        <p v-if="showInvalidError"
-                            class="text-red-500 text-[10px] font-bold mt-2 ml-1 italic animate-pulse">⚠️ GIVE VALID EMP
-                            ID</p>
-                    </div>
-
-                    <div v-if="foundEmployee"
-                        class="bg-slate-900 rounded-xl p-5 border-l-4 border-indigo-500 shadow-xl">
-                        <p class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest mb-1 italic">Matched
-                            Profile</p>
-                        <div class="flex justify-between items-end">
-                            <span class="font-black text-white uppercase text-sm">{{ foundEmployee.name }}</span>
-                            <div class="text-right">
-                                <p class="text-[9px] font-bold text-slate-500 uppercase italic">Current Balance</p>
-                                <p class="text-xl font-black text-indigo-400 italic">৳{{ liveNetPayable.toLocaleString()
-                                }}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div :class="{ 'opacity-20 pointer-events-none blur-[1px]': !foundEmployee }"
-                        class="space-y-4 transition-all">
-                        <select v-model="advanceForm.reason_id"
-                            class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm font-bold italic">
-                            <option value="" disabled>Select Reason...</option>
-                            <option v-for="r in advanceReasons" :key="r.id" :value="r.id">{{ r.reason_name }}</option>
-                        </select>
-                        <div class="grid grid-cols-2 gap-4">
-                            <input v-model="advanceForm.amount" type="number" placeholder="Amount"
-                                class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm font-bold" />
-                            <input v-model="advanceForm.advance_date" type="date"
-                                class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm font-bold" />
-                        </div>
-                    </div>
-
-                    <button type="submit" :disabled="!foundEmployee || liveNetPayable < 0"
-                        class="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-300 transition-all">
-                        Confirm Transaction
-                    </button>
-                </form>
+            <div class="mt-8 flex justify-center print:hidden">
+                <Pagination :links="employees.links" />
             </div>
         </div>
 
-        <div v-if="showDetailsModal && selectedEmp"
-            class="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-50 flex items-center justify-center p-6">
-            <div class="bg-white w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-                <div class="p-6 border-b border-slate-100 flex justify-between items-center px-8">
-                    <h3 class="font-bold text-slate-800 uppercase text-xs tracking-[0.2em] italic">Current Monthly
-                        Statement</h3>
-                    <button @click="showDetailsModal = false"
-                        class="text-slate-300 hover:text-slate-900 transition-colors font-bold">✕</button>
-                </div>
-                <div class="flex-1 flex overflow-hidden">
-                    <div class="w-1/3 bg-slate-50 p-8 border-r border-slate-100">
-                        <div class="mb-10">
-                            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 italic">
-                                Employee Name</p>
-                            <h4 class="text-2xl font-black text-slate-900 leading-none uppercase">{{ selectedEmp.name }}
-                            </h4>
-                            <p class="text-indigo-600 font-bold text-[10px] mt-2 tracking-[0.3em]">{{
-                                selectedEmp.employee_id }}</p>
+        <div v-if="showAdvanceModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-[40px] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+                <div class="p-10">
+                    <div class="flex justify-between items-start mb-8">
+                        <div>
+                            <h2 class="text-2xl font-black uppercase italic tracking-tighter text-slate-900">New <span class="text-indigo-600">Advance</span></h2>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Payroll Live Adjustment</p>
                         </div>
-                        <div class="mt-auto space-y-3">
-                            <div class="bg-white p-5 rounded-xl border border-slate-100 shadow-sm space-y-4">
-                                <div class="flex justify-between items-center"><span
-                                        class="text-[9px] font-bold text-slate-400 uppercase italic">Base</span><span
-                                        class="text-sm font-bold">৳{{ selectedEmp.base_salary.toLocaleString() }}</span>
-                                </div>
-                                <div class="flex justify-between items-center border-t border-slate-50 pt-3"><span
-                                        class="text-[9px] font-bold text-red-400 uppercase italic">Deducted</span><span
-                                        class="text-sm font-bold text-red-500">-৳{{ selectedEmp.advance.toLocaleString()
-                                        }}</span></div>
-                            </div>
-                            <div class="bg-slate-900 p-6 rounded-xl text-white">
-                                <p class="text-[9px] font-bold text-slate-500 uppercase mb-1 tracking-widest italic">Net
-                                    Monthly Payable</p>
-                                <p class="text-3xl font-black text-indigo-400 italic">৳{{
-                                    selectedEmp.net_payable.toLocaleString() }}</p>
-                            </div>
-                        </div>
+                        <button @click="showAdvanceModal = false" class="text-slate-300 hover:text-red-500 text-2xl">×</button>
                     </div>
-                    <div class="flex-1 bg-white overflow-y-auto p-8 custom-scrollbar">
-                        <div v-for="adv in sortedHistory" :key="adv.id"
-                            class="flex justify-between items-center p-4 bg-slate-50/50 rounded-xl border border-slate-100 mb-3">
-                            <div class="flex items-center gap-4">
+
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic">Employee Search ID</label>
+                            <input v-model="modalSearchId" type="text" placeholder="e.g. EMP-001"
+                                class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 text-sm font-bold focus:border-indigo-500 outline-none transition-all uppercase" />
+                        </div>
+
+                        <div v-if="foundEmployee" class="bg-indigo-50 rounded-3xl p-6 border border-indigo-100 animate-in slide-in-from-top-4 duration-500">
+                            <div class="flex justify-between items-center mb-4 pb-4 border-b border-indigo-100/50">
                                 <div>
-                                    <p class="text-xs font-bold text-slate-800 uppercase italic">{{
-                                        adv.reason?.reason_name || 'Advance' }}</p>
-                                    <p class="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">{{
-                                        formatDate(adv.advance_date) }}</p>
+                                    <p class="text-[9px] font-black text-indigo-400 uppercase italic">Employee</p>
+                                    <h3 class="text-lg font-black text-indigo-900 uppercase italic">{{ foundEmployee.name }}</h3>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[9px] font-black text-indigo-400 uppercase italic">Current Net</p>
+                                    <p class="text-sm font-bold text-indigo-900">৳{{ foundEmployee.net_payable.toLocaleString() }}</p>
                                 </div>
                             </div>
-                            <div class="text-right font-black text-red-500 text-sm">- ৳{{ adv.amount.toLocaleString() }}
+                            <div class="flex justify-between items-center">
+                                <p class="text-[10px] font-black text-indigo-400 uppercase italic">Forecast Net Payable:</p>
+                                <p class="text-xl font-black italic" :class="liveNetPayable < 0 ? 'text-red-500' : 'text-indigo-600'">
+                                    ৳{{ liveNetPayable.toLocaleString() }}
+                                </p>
                             </div>
+                        </div>
+
+                        <div v-if="foundEmployee" class="grid grid-cols-2 gap-4 animate-in fade-in duration-700">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic">Reason</label>
+                                <select v-model="advanceForm.reason_id" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:border-indigo-500">
+                                    <option value="">Reason</option>
+                                    <option v-for="r in advanceReasons" :key="r.id" :value="r.id">{{ r.reason_name }}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic">Amount (৳)</label>
+                                <input v-model="advanceForm.amount" type="number" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:border-indigo-500" />
+                            </div>
+                        </div>
+
+                        <div v-if="showInvalidError" class="text-center p-6 bg-red-50 rounded-2xl border border-red-100">
+                            <p class="text-[10px] font-black text-red-500 uppercase italic">No Record Found for ID: {{ modalSearchId }}</p>
                         </div>
                     </div>
                 </div>
-                <div class="p-4 border-t border-slate-50 bg-white flex justify-end gap-3 px-8">
-                    <button @click="showDetailsModal = false"
-                        class="text-[10px] font-bold text-slate-400 px-4 uppercase tracking-widest">Close</button>
-                    <button @click="window.print()"
-                        class="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest">Print
-                        Record</button>
+
+                <div class="p-4 bg-slate-50 flex justify-end gap-3 px-10 border-t border-slate-100">
+                    <button @click="showAdvanceModal = false" class="text-[10px] font-bold text-slate-400 px-4 uppercase tracking-widest">Cancel</button>
+                    <button @click="submitAdvance" :disabled="!foundEmployee || !advanceForm.amount"
+                        class="bg-indigo-600 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-200 disabled:opacity-30">
+                        Confirm Advance
+                    </button>
                 </div>
             </div>
         </div>
+<div v-if="showDetailsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-[24px] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+
+        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <div>
+                <h2 class="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
+                    {{ selectedEmp?.name }} <span class="text-indigo-600">Ledger</span>
+                </h2>
+                <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">ID: {{ selectedEmp?.employee_id }}</p>
+            </div>
+            <button @click="showDetailsModal = false" class="text-slate-300 hover:text-red-500 text-2xl">×</button>
+        </div>
+
+        <div class="max-h-[450px] overflow-y-auto custom-scrollbar">
+            <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 bg-slate-100 shadow-sm z-10">
+                    <tr class="text-[9px] font-black text-slate-500 uppercase tracking-widest italic border-b border-slate-200">
+                        <th class="px-4 py-3 border-r border-slate-200">#</th>
+                        <th class="px-4 py-3 border-r border-slate-200">Date</th>
+                        <th class="px-4 py-3 border-r border-slate-200">Reason / Description</th>
+                        <th class="px-4 py-3 text-right">Amount (৳)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                    <tr v-for="(adv, index) in selectedEmp?.advance_history" :key="adv.id"
+                        class="hover:bg-indigo-50/30 transition-colors text-[11px] font-bold text-slate-700">
+                        <td class="px-4 py-2 border-r border-slate-100 text-slate-400 font-mono">{{ index + 1 }}</td>
+                        <td class="px-4 py-2 border-r border-slate-100 font-mono">{{ formatDate(adv.advance_date) }}</td>
+                        <td class="px-4 py-2 border-r border-slate-100 uppercase italic">{{ adv.reason?.reason_name || 'General Advance' }}</td>
+                        <td class="px-4 py-2 text-right text-red-600 font-mono">- {{ adv.amount.toLocaleString() }}</td>
+                    </tr>
+
+                    <tr v-if="!selectedEmp?.advance_history?.length">
+                        <td colspan="4" class="py-20 text-center text-slate-300 uppercase text-[10px] font-black tracking-widest">
+                            No transactions recorded
+                        </td>
+                    </tr>
+                </tbody>
+
+                <tfoot class="sticky bottom-0 bg-white border-t-2 border-slate-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+                    <tr class="text-slate-900">
+                        <td colspan="3" class="px-4 py-4 text-right text-[10px] font-black uppercase italic tracking-widest border-r border-slate-100">
+                            Total Pending Advance
+                        </td>
+                        <td class="px-4 py-4 text-right text-lg font-black text-red-600 italic">
+                            ৳{{ selectedEmp?.advance.toLocaleString() }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="p-4 bg-slate-50 flex justify-end px-10 border-t border-slate-100 print:hidden">
+            <button @click="showDetailsModal = false" class="bg-slate-900 text-white px-10 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                Close Ledger
+            </button>
+        </div>
+    </div>
+</div>
 
     </div>
 </template>
+
+<style>
+@media print {
+    .print\:hidden { display: none !important; }
+    body { background-color: white !important; }
+    .max-w-6xl { max-width: 100% !important; margin: 0 !important; }
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+</style>
