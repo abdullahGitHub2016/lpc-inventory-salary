@@ -15,44 +15,44 @@ class SalaryController extends Controller
 {
     // app/Http/Controllers/SalaryController.php
 
-public function index(Request $request)
-{
-    // 1. Initialize query with relationships
-    $query = Employee::query();
+    public function index(Request $request)
+    {
+        // 1. Initialize query with relationships
+        $query = Employee::query();
 
-    // 2. Search by Name or Employee ID
-    if ($request->filled('search')) {
-        $search = $request->search;
-        $query->where(function($q) use ($search) {
-            $q->where('name', 'like', '%' . $search . '%')
-              ->orWhere('employee_id', 'like', '%' . $search . '%');
+        // 2. Search by Name or Employee ID
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%' . $search . '%')
+                    ->orWhere('employee_id', 'like', '%' . $search . '%');
+            });
+        }
+
+        // 3. Paginate the results (e.g., 10 per page)
+        $employees = $query->paginate(10)->withQueryString()->through(function ($employee) {
+            $history = $employee->advances()
+                ->with('reason')
+                ->orderBy('advance_date', 'desc')
+                ->get();
+
+            return [
+                'id'            => $employee->id,
+                'employee_id'   => $employee->employee_id,
+                'name'          => $employee->name,
+                'base_salary'   => (float) $employee->total_salary,
+                'advance'       => (float) $history->where('status', 'pending')->sum('amount'),
+                'net_payable'   => (float) ($employee->total_salary - $history->where('status', 'pending')->sum('amount')),
+                'advance_history' => $history
+            ];
         });
+
+        return Inertia::render('Salary/SalaryIndex', [
+            'employees'      => $employees, // Now a paginated object
+            'advanceReasons' => \App\Models\AdvanceReason::all(),
+            'filters'        => $request->only(['search'])
+        ]);
     }
-
-    // 3. Paginate the results (e.g., 10 per page)
-    $employees = $query->paginate(10)->withQueryString()->through(function ($employee) {
-        $history = $employee->advances()
-            ->with('reason')
-            ->orderBy('advance_date', 'desc')
-            ->get();
-
-        return [
-            'id'            => $employee->id,
-            'employee_id'   => $employee->employee_id,
-            'name'          => $employee->name,
-            'base_salary'   => (float) $employee->total_salary,
-            'advance'       => (float) $history->where('status', 'pending')->sum('amount'),
-            'net_payable'   => (float) ($employee->total_salary - $history->where('status', 'pending')->sum('amount')),
-            'advance_history' => $history
-        ];
-    });
-
-    return Inertia::render('Salary/SalaryIndex', [
-        'employees'      => $employees, // Now a paginated object
-        'advanceReasons' => \App\Models\AdvanceReason::all(),
-        'filters'        => $request->only(['search'])
-    ]);
-}
     /**
      * Store the advance taken by an employee
      */
@@ -180,107 +180,174 @@ public function index(Request $request)
             }
         }
     }
+
+    // app/Http/Controllers/SalaryController.php
+
     public function processMonthly(Request $request)
-{
-    // 1. Prepare Month/Year info
-    $now = Carbon::now();
-    $monthName = $now->format('F');
-    $year = $now->year;
-    $monthNumber = $now->month;
+    {
+        // Use Carbon to get current timing so payload isn't needed
+        $now = \Carbon\Carbon::now();
+        $monthName = $now->format('F');
+        $monthNumber = $now->month;
+        $year = $now->year;
 
-    // Prevent double processing if the month is already archived
-    $exists = DB::table('salary_sheets')
-        ->where('month', $monthName)
-        ->where('year', $year)
-        ->exists();
+        // Check if archive already exists for this specific month/year
+        $alreadyExists = DB::table('salary_sheets')
+            ->where('month', $monthName)
+            ->where('year', $year)
+            ->exists();
 
-    if ($exists) {
-        return back()->with('error', "The salary for $monthName $year has already been processed.");
-    }
+        if ($alreadyExists) {
+            return back()->with('error', "Payroll for $monthName $year is already closed.");
+        }
 
-    DB::beginTransaction();
-    try {
-        // 2. Get all employees with their current live balances
-        // This logic must match exactly how you display it on the Live Dashboard
-        $employees = Employee::all()->map(function($emp) {
-            $totalAdvance = SalaryAdvance::where('employee_id', $emp->id)
-                            ->whereMonth('advance_date', Carbon::now()->month)
-                            ->sum('amount');
+        DB::beginTransaction();
+        try {
+            // Fetch ALL employees from the database
+            $employees = \App\Models\Employee::all();
 
-            return [
-                'employee_id_string' => $emp->employee_id, // e.g. "LPC-001"
-                'name' => $emp->name,
-                'base_salary' => $emp->base_salary,
-                'advance' => $totalAdvance,
-                'net_payable' => $emp->base_salary - $totalAdvance,
-            ];
-        });
+            if ($employees->isEmpty()) {
+                return back()->with('error', 'No employees found to process.');
+            }
 
-        $totalPayout = $employees->sum('net_payable');
+            $grandTotalPayout = 0;
 
-        // 3. Create the Archive Header
-        $salarySheetId = DB::table('salary_sheets')->insertGetId([
-            'month' => $monthName,
-            'month_number' => $monthNumber,
-            'year' => $year,
-            'total_payout' => $totalPayout,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        // 4. Save snapshots of every employee
-        foreach ($employees as $data) {
-            DB::table('salary_sheet_details')->insert([
-                'salary_sheet_id' => $salarySheetId,
-                'employee_id' => $data['employee_id_string'],
-                'name' => $data['name'],
-                'base_salary' => $data['base_salary'],
-                'advance' => $data['advance'],
-                'net_payable' => $data['net_payable'],
+            // 1. Insert the Header
+            $salarySheetId = DB::table('salary_sheets')->insertGetId([
+                'month' => $monthName,
+                'month_number' => $monthNumber,
+                'year' => $year,
+                'total_payout' => 0,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            // 2. Process each employee
+            foreach ($employees as $emp) {
+                // 1. Get the sum of advances
+                $advanceSum = DB::table('salary_advances')
+                    ->where('employee_id', $emp->id)
+                    ->whereMonth('advance_date', $monthNumber)
+                    ->whereYear('advance_date', $year)
+                    ->sum('amount') ?? 0;
+
+                // 2. Ensure base_salary is a number (FIXES THE NULL ERROR)
+                $baseSalary = $emp->base_salary ?? 0;
+
+                // 3. Calculate net payable
+                $netPayable = $baseSalary - $advanceSum;
+                $grandTotalPayout += $netPayable;
+
+                // 4. Insert into details
+                DB::table('salary_sheet_details')->insert([
+                    'salary_sheet_id' => $salarySheetId,
+                    'employee_id'     => $emp->employee_id,
+                    'name'            => $emp->name,
+                    'base_salary'     => $baseSalary, // Now this will be 0 instead of NULL
+                    'advance'         => $advanceSum,
+                    'net_payable'     => $netPayable,
+                    'created_at'      => now(),
+                    'updated_at'      => now(),
+                ]);
+            }
+
+            // 4. Update Header Total
+            DB::table('salary_sheets')->where('id', $salarySheetId)->update([
+                'total_payout' => $grandTotalPayout
+            ]);
+
+            // 5. CLEAR live advances for the processed month
+            DB::table('salary_advances')
+                ->whereMonth('advance_date', $monthNumber)
+                ->whereYear('advance_date', $year)
+                ->delete();
+
+            DB::commit();
+
+            return redirect()->route('salary.archive.index')
+                ->with('success', "Payroll for $monthName $year has been archived.");
+        } catch (\Exception $e) {
+            dd($e);
+            DB::rollback();
+            return back()->with('error', 'Server Error: ' . $e->getMessage());
         }
-
-        // 5. RESET THE LIVE LEDGER
-        // Delete or mark current month advances as 'processed'
-        // This clears the "Advance" column on your Live Dashboard for next month
-        SalaryAdvance::whereMonth('advance_date', $monthNumber)
-                     ->whereYear('advance_date', $year)
-                     ->delete();
-
-        DB::commit();
-        return redirect()->route('salary.archive.index')->with('success', "Salary for $monthName processed and archived successfully.");
-
-    } catch (\Exception $e) {
-        DB::rollback();
-        return back()->with('error', 'Error processing salary: ' . $e->getMessage());
     }
-}
+    // app/Http/Controllers/SalaryController.php
 
-// app/Http/Controllers/SalaryController.php
+    public function destroyArchive($month, $year)
+    {
+        DB::beginTransaction();
+        try {
+            $archive = DB::table('salary_sheets')
+                ->where('month', $month)
+                ->where('year', $year)
+                ->first();
 
-public function destroyArchive($month, $year)
-{
-    DB::beginTransaction();
-    try {
-        $archive = DB::table('salary_sheets')
-            ->where('month', $month)
-            ->where('year', $year)
-            ->first();
+            if ($archive) {
+                // Delete snapshots first due to foreign key constraints
+                DB::table('salary_sheet_details')->where('salary_sheet_id', $archive->id)->delete();
+                DB::table('salary_sheets')->where('id', $archive->id)->delete();
 
-        if ($archive) {
-            // Delete snapshots first due to foreign key constraints
+                DB::commit();
+                return redirect()->back()->with('success', 'Archive deleted.');
+            }
+            return back()->with('error', 'Not found.');
+        } catch (\Exception $e) {
+            DB::rollback();
+            return back()->with('error', 'Failed: ' . $e->getMessage());
+        }
+    }
+    // app/Http/Controllers/SalaryController.php
+
+    public function rollbackArchive($month, $year)
+    {
+        DB::beginTransaction();
+        try {
+            $archive = DB::table('salary_sheets')
+                ->where('month', $month)
+                ->where('year', $year)
+                ->first();
+
+            if (!$archive) return back()->with('error', 'Archive not found.');
+
+            $details = DB::table('salary_sheet_details')
+                ->where('salary_sheet_id', $archive->id)
+                ->get();
+
+            foreach ($details as $row) {
+                if ($row->advance > 0) {
+                    // Find internal ID based on the string ID stored in details
+                    $internalEmpId = DB::table('employees')
+                        ->where('employee_id', $row->employee_id)
+                        ->value('id');
+
+                    if ($internalEmpId) {
+                        DB::table('salary_advances')->insert([
+                            'employee_id' => $internalEmpId,
+                            'reason_id'   => 1, // Assumes 1 is a default reason
+                            'amount'      => $row->advance,
+                            'advance_date' => now(), // Moves to current date for the live ledger
+                            'created_at'  => now(),
+                            'updated_at'  => now(),
+                        ]);
+                    }
+                }
+            }
+
+            // Clean up archive tables
             DB::table('salary_sheet_details')->where('salary_sheet_id', $archive->id)->delete();
             DB::table('salary_sheets')->where('id', $archive->id)->delete();
 
             DB::commit();
-            return redirect()->back()->with('success', 'Archive deleted.');
+            return redirect()->route('salary.index')->with('success', 'Month reopened for editing.');
+        } catch (\Exception $e) {
+            DB::rollback();
+            return back()->with('error', 'Rollback failed: ' . $e->getMessage());
         }
-        return back()->with('error', 'Not found.');
-    } catch (\Exception $e) {
-        DB::rollback();
-        return back()->with('error', 'Failed: ' . $e->getMessage());
     }
-}
+    // Helper to convert LPC-001 back to internal primary key
+    private function getInternalId($empStringId)
+    {
+        return DB::table('employees')->where('employee_id', $empStringId)->value('id');
+    }
 }

@@ -75,6 +75,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/salary/process-monthly', [SalaryController::class, 'processMonthly'])->name('salary.process');
     Route::delete('/salary/archive/{month}/{year}', [SalaryController::class, 'destroyArchive'])
     ->name('salary.archive.destroy');
+
+    Route::post('/salary/archive/rollback/{month}/{year}', [SalaryController::class, 'rollbackArchive'])
+    ->name('salary.archive.rollback');
 });
 
 Route::get('/seed-history', function () {

@@ -83,7 +83,14 @@ const printLedger = () => window.print();
 
 const confirmMonthlyProcess = () => {
     if (confirm("Are you sure? This will freeze this month's data and reset all advances.")) {
-        router.post(route('salary.process'));
+        router.post(route('salary.process'), {}, {
+            onSuccess: () => {
+                console.log("Success!");
+            },
+            onError: (errors) => {
+                console.error("Failed to process month", errors);
+            }
+        });
     }
 };
 
