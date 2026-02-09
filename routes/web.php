@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SalaryArchiveController;
@@ -8,6 +9,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
 
 
 
@@ -80,55 +82,9 @@ Route::middleware(['auth'])->group(function () {
     ->name('salary.archive.rollback');
 });
 
-Route::get('/seed-history', function () {
-    // 1. Create December 2025 Archive
-    $id = DB::table('salary_sheets')->insertGetId([
-        'month' => 'December',
-        'month_number' => 12,
-        'year' => 2025,
-        'total_payout' => 45000,
-        'created_at' => now(),
-    ]);
 
-    DB::table('salary_sheet_details')->insert([
-        [
-            'salary_sheet_id' => $id,
-            'employee_id' => 'LPC-001',
-            'name' => 'John Doe',
-            'base_salary' => 30000,
-            'advance' => 5000,
-            'net_payable' => 25000,
-        ],
-        [
-            'salary_sheet_id' => $id,
-            'employee_id' => 'LPC-002',
-            'name' => 'Jane Smith',
-            'base_salary' => 25000,
-            'advance' => 5000,
-            'net_payable' => 20000,
-        ]
-    ]);
-
-    // 2. Create November 2025 Archive
-    $id2 = DB::table('salary_sheets')->insertGetId([
-        'month' => 'November',
-        'month_number' => 11,
-        'year' => 2025,
-        'total_payout' => 22000,
-        'created_at' => now(),
-    ]);
-
-    DB::table('salary_sheet_details')->insert([
-        [
-            'salary_sheet_id' => $id2,
-            'employee_id' => 'LPC-001',
-            'name' => 'John Doe',
-            'base_salary' => 30000,
-            'advance' => 8000,
-            'net_payable' => 22000,
-        ]
-    ]);
-
-    return "History Seeded! Go check your Archive page.";
+Route::middleware(['auth'])->group(function () {
+    Route::resource('employees', EmployeeController::class);
 });
+
 require __DIR__ . '/auth.php';

@@ -39,7 +39,8 @@ class SalaryController extends Controller
             return [
                 'id'            => $employee->id,
                 'employee_id'   => $employee->employee_id,
-                'name'          => $employee->name,
+                'designation'   => $employee->designation,
+                'name'   => $employee->name,
                 'base_salary'   => (float) $employee->total_salary,
                 'advance'       => (float) $history->where('status', 'pending')->sum('amount'),
                 'net_payable'   => (float) ($employee->total_salary - $history->where('status', 'pending')->sum('amount')),
