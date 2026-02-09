@@ -48,11 +48,10 @@ watch(searchQuery, debounce((value) => {
 // --- COMPUTED PROPERTIES ---
 const sortedEmployees = computed(() => {
     const dataArray = props.employees.data || [];
-    return [...dataArray].sort((a, b) => {
-        if (a.id === lastEditedId.value) return -1;
-        if (b.id === lastEditedId.value) return 1;
-        return b.id - a.id;
-    });
+
+    // If you want the database order (latest first),
+    // simply return the array as is.
+    return dataArray;
 });
 
 const foundEmployee = computed(() => {
@@ -114,6 +113,16 @@ const submitEmployeeForm = () => {
     } else {
         router.post(route('employees.store'), form, {
             onSuccess: () => showEmployeeModal.value = false
+        });
+    }
+};
+
+const deleteEmployee = (id) => {
+    if (confirm("Are you sure you want to delete this employee?")) {
+        router.delete(route('employees.destroy', id), {
+            onSuccess: () => {
+                // Optional: success message
+            }
         });
     }
 };
@@ -217,8 +226,8 @@ const confirmMonthlyProcess = () => {
                             <td class="px-6 py-4">
                                 <div class="font-bold text-slate-800 uppercase text-xs">{{ emp.name }}</div>
                                 <div class="text-[10px] text-slate-400 font-bold font-mono">
-            {{ emp.designation }} • {{ emp.employee_id }}
-        </div>
+                                    {{ emp.designation }} • {{ emp.employee_id }}
+                                </div>
                             </td>
                             <td class="px-6 py-4 text-right font-medium text-slate-500 italic">
                                 ৳{{ emp.base_salary.toLocaleString() }}
@@ -242,6 +251,9 @@ const confirmMonthlyProcess = () => {
                                     <button @click="openEditModal(emp)" class="hover:scale-125 transition-transform">
                                         ✏️
                                     </button>
+                                    <button @click="deleteEmployee(emp.id)" class="text-red-400 hover:text-red-600" title="Delete">
+        🗑️
+    </button>
                                 </div>
                             </td>
                         </tr>
@@ -348,41 +360,52 @@ const confirmMonthlyProcess = () => {
             </div>
         </div>
 
-                <div v-if="showEmployeeModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-            <div class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+        <div v-if="showEmployeeModal"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div
+                class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
                 <div class="p-10">
                     <div class="flex justify-between items-center mb-8">
                         <h2 class="text-xl font-black uppercase italic tracking-tighter">
                             {{ isEditing ? 'Edit' : 'New' }} <span class="text-indigo-600">Employee</span>
                         </h2>
-                        <button @click="showEmployeeModal = false" class="text-slate-300 hover:text-red-500 text-2xl">&times;</button>
+                        <button @click="showEmployeeModal = false"
+                            class="text-slate-300 hover:text-red-500 text-2xl">&times;</button>
                     </div>
 
                     <div class="space-y-5">
                         <div>
-                            <label class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Employee ID</label>
+                            <label
+                                class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Employee
+                                ID</label>
                             <input v-model="form.employee_id" type="text" placeholder="e.g. LPC-001"
                                 class="w-full bg-slate-50 border-none rounded-xl px-5 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500 uppercase" />
                         </div>
                         <div>
-                            <label class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Full Name</label>
+                            <label
+                                class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Full
+                                Name</label>
                             <input v-model="form.name" type="text" placeholder="John Doe"
                                 class="w-full bg-slate-50 border-none rounded-xl px-5 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500" />
                         </div>
                         <div>
-                            <label class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Designation</label>
+                            <label
+                                class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Designation</label>
                             <input v-model="form.designation" type="text" placeholder="e.g. Engineer"
                                 class="w-full bg-slate-50 border-none rounded-xl px-5 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500" />
                         </div>
                         <div>
-                            <label class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Base Salary</label>
+                            <label
+                                class="text-[9px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Base
+                                Salary</label>
                             <input v-model="form.base_salary" type="number" placeholder="0.00"
                                 class="w-full bg-slate-50 border-none rounded-xl px-5 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500" />
                         </div>
                     </div>
 
                     <div class="flex gap-4 mt-10">
-                        <button @click="showEmployeeModal = false" class="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancel</button>
+                        <button @click="showEmployeeModal = false"
+                            class="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancel</button>
                         <button @click="submitEmployeeForm"
                             class="flex-[2] bg-slate-900 text-white py-4 rounded-2xl font-black uppercase italic text-[10px] tracking-widest hover:bg-indigo-600 transition-all shadow-lg">
                             {{ isEditing ? 'Update Records' : 'Register Entry' }}

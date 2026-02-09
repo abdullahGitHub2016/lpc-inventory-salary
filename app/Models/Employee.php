@@ -4,9 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Employee extends Model
 {
+    use SoftDeletes;
     // These are the fields we allow to be filled
     protected $fillable = [
         'employee_id', // This is your unique string ID
@@ -38,4 +40,5 @@ class Employee extends Model
             $employee->employee_id = 'EMP-' . str_pad($nextId, 4, '0', STR_PAD_LEFT);
         });
     }
+
 }

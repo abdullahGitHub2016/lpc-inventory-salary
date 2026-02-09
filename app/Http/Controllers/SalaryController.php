@@ -18,7 +18,7 @@ class SalaryController extends Controller
     public function index(Request $request)
     {
         // 1. Initialize query with relationships
-        $query = Employee::query();
+        $query = Employee::query()->latest();
 
         // 2. Search by Name or Employee ID
         if ($request->filled('search')) {

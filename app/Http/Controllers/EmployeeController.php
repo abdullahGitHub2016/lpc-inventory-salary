@@ -12,19 +12,23 @@ class EmployeeController extends Controller
     /**
      * Display a listing of employees (Agile User Story 1 & 7)
      */
-    public function index()
+    public function index(Request $request)
 {
-    // Make sure you aren't doing ->select('name', 'employee_id')
-    // which would leave out designation.
     $employees = Employee::query()
+        // This ensures the newest IDs (highest numbers) come first
         ->latest()
-        ->paginate(10);
+        ->when($request->search, function ($query, $search) {
+            $query->where('name', 'like', "%{$search}%")
+                  ->orWhere('employee_id', 'like', "%{$search}%");
+        })
+        ->paginate(10)
+        ->withQueryString();
 
     return Inertia::render('SalaryIndex', [
-        'employees' => $employees
+        'employees' => $employees,
+        'filters' => $request->only(['search'])
     ]);
 }
-
     /**
      * Store a newly created employee (The "Main Element" entry)
      */
