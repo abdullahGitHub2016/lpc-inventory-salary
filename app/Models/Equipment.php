@@ -47,9 +47,18 @@ public function spares() {
 }
 
 // Relationship for "Inside" maintenance history
-public function maintenanceLogs() // Frontend expects this name
+public function maintenanceLogs()
 {
-    // Point it to your existing MaintenanceRecord model
-    return $this->hasMany(MaintenanceRecord::class, 'equipment_id')->orderBy('service_date', 'DESC');
+    return $this->hasMany(MaintenanceRecord::class, 'equipment_id')
+                ->latest('service_date') // Sorts by date DESC
+                ->latest('id');          // Secondary sort for items on the same day
+}
+/**
+ * Get the main Rig this spare is attached to.
+ */
+public function parent()
+{
+    // We reference the same model (Equipment) using the parent_id column
+    return $this->belongsTo(Equipment::class, 'parent_id');
 }
 }

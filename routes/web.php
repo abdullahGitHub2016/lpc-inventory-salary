@@ -9,6 +9,7 @@ use App\Http\Controllers\InventoryController;
 
 
 
+
 // --- 2. SYSTEM HUB (HOME) ---
 Route::middleware(['auth'])->group(function () {
     // Dashboard Home
@@ -47,13 +48,46 @@ Route::middleware(['auth'])->group(function () {
 // --- 5. INVENTORY MODULE (Using your InventoryController) ---
 Route::middleware(['auth'])->group(function () {
     // This naming must match the 'route()' call in your Dashboard.vue
+    // routes/web.php
+
+    // Route for Main Rigs
+    Route::get('/fleet', [InventoryController::class, 'fleetIndex'])->name('inventory.fleet');
+
+    // Route for Warehouse/Spares
+    Route::get('/depo', [InventoryController::class, 'depoIndex'])->name('inventory.depo');
+
     Route::get('/inventory', [InventoryController::class, 'index'])->name('inventory.index');
 
     // Add your other existing inventory routes here
     Route::post('/inventory', [InventoryController::class, 'store'])->name('inventory.store');
     Route::put('/inventory/{id}', [InventoryController::class, 'update'])->name('inventory.update');
     Route::delete('/inventory/{id}', [InventoryController::class, 'destroy'])->name('inventory.destroy');
+
+    // 1. Add the POST route for storing new logs
+    Route::get('/inventory/equipment/{id}/logs', [InventoryController::class, 'getLogs'])->name('inventory.logs.fetch');
+
+    Route::post('/inventory/link-spare', [InventoryController::class, 'linkSpare'])
+        ->name('inventory.link-spare');
+
+    Route::put('/inventory/link-spare', [InventoryController::class, 'linkSpare'])
+        ->name('inventory.link-spare');
+    // Ensure this is inside your auth or web middleware group
+    Route::post('/inventory/unlink-spare/{id}', [InventoryController::class, 'unlinkSpare'])
+        ->name('inventory.unlink-spare');
+    // Change Route::put to Route::post
+    Route::put('/inventory/transfer/{id}', [InventoryController::class, 'handleTransfer'])
+    ->name('inventory.transfer');
+
+    Route::post('/inventory/service-logs', [InventoryController::class, 'storeServiceLog'])
+        ->name('inventory.service-logs.store');
+
+    // 2. These are the routes that were causing the conflict
+    Route::put('/inventory/service-logs/{id}', [InventoryController::class, 'updateServiceLog'])
+        ->name('inventory.service-logs.update');
+
+    Route::delete('/inventory/service-logs/{id}', [InventoryController::class, 'destroyServiceLog'])
+        ->name('inventory.service-logs.destroy');
 });
 
 // --- 1. AUTHENTICATION (Login, Logout, etc) ---
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

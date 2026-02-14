@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Employee;
 use App\Models\Equipment;
 use App\Models\InventoryMovement;
 use App\Models\MaintenanceRecord;
@@ -20,16 +21,22 @@ class InventoryController extends Controller
     public function index(Request $request)
     {
         return Inertia::render('Inventory/EquipmentList', [
+
+            'employees' => Employee::where('designation', 'LIKE', '%Mechanic%')
+                ->orWhere('designation', 'LIKE', '%Technician%')
+                ->orWhere('designation', 'LIKE', '%Engineer%')
+                ->get(['id', 'name', 'designation']), // Keep designation so we can show it in Vue
             // Paginated Rigs with relationships for History & Spares
             'equipment' => Equipment::with(['currentSite', 'maintenanceLogs', 'spares'])
                 ->where('is_attachment', 0)
                 ->paginate(15)
                 ->withQueryString(),
 
+
             // Warehouse Items
             'depoSpares' => Equipment::with(['currentSite', 'maintenanceLogs'])
                 ->where('is_attachment', 1)
-                ->whereNull('parent_id')
+                ->with(['currentSite', 'parent']) // <--- Load the Rig it belongs to
                 ->get(),
 
             // Non-paginated list for the "Link to Rig" dropdown
@@ -40,6 +47,57 @@ class InventoryController extends Controller
             'sites' => Site::all(),
         ]);
     }
+    // app/Http/Controllers/InventoryController.php
+
+    // InventoryController.php
+
+    // Function for the Fleet Page
+    // InventoryController.php
+    public function fleetIndex(Request $request)
+    {
+        $search = $request->input('search');
+
+        $equipment = Equipment::where('is_attachment', 0)
+            ->when($search, function ($query, $search) {
+                $query->where('name', 'like', "%{$search}%")
+                    ->orWhere('serial_number', 'like', "%{$search}%");
+            })
+            // CRITICAL: Eager load maintenance_logs and the mechanic relationship
+            ->with(['currentSite', 'spares', 'maintenanceLogs.mechanic'])
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
+
+        return Inertia::render('Inventory/FleetList', [
+            'equipment' => $equipment,
+            'sites' => Site::all(),
+            'employees' => Employee::all(),
+        ]);
+    }
+    // Function for the Depo Page
+    // 1. The main Depo Page function
+    public function depoIndex(Request $request)
+    {
+        $search = $request->input('search');
+
+        return Inertia::render('Inventory/DepoList', [
+            'depoSpares' => Equipment::where('is_attachment', 1)
+                ->when($search, function ($query, $search) {
+                    $query->where('name', 'like', "%{$search}%")
+                        ->orWhere('serial_number', 'like', "%{$search}%");
+                })
+                // CRITICAL: Eager load 'parent' to see the linked Rig name
+                ->with(['currentSite', 'parent'])
+                ->latest()
+                ->paginate(15)
+                ->withQueryString(),
+
+            'allRigs' => Equipment::where('is_attachment', 0)->get(),
+            'sites' => Site::all(),
+        ]);
+    }
+
+
 
     /**
      * RESTORED: Create New Equipment/Spare with is_attachment support
@@ -62,17 +120,6 @@ class InventoryController extends Controller
         Equipment::create($validated);
 
         return redirect()->back()->with('message', 'Item Added Successfully!');
-    }
-
-    /**
-     * RESTORED: Show the standalone transfer form
-     */
-    public function transfer()
-    {
-        return Inertia::render('Inventory/TransferForm', [
-            'equipmentList' => Equipment::with('currentSite')->get(),
-            'sites' => Site::all()
-        ]);
     }
 
     /**
@@ -152,25 +199,40 @@ class InventoryController extends Controller
      * Delete item
      */
     public function destroy($id)
-{
-    $item = Equipment::findOrFail($id);
+    {
+        $item = Equipment::findOrFail($id);
 
-    // If it's a Rig, unlink its spares before deleting
-    if ($item->is_attachment == 0) {
-        Equipment::where('parent_id', $item->id)->update([
-            'parent_id' => null,
-            'is_attachment' => 1,
-            'status' => 'In Stock'
-        ]);
+        // If it's a Rig, unlink its spares before deleting
+        if ($item->is_attachment == 0) {
+            Equipment::where('parent_id', $item->id)->update([
+                'parent_id' => null,
+                'is_attachment' => 1,
+                'status' => 'In Stock'
+            ]);
+        }
+
+        $item->delete();
+
+        return redirect()->back()->with('message', 'Item deleted successfully');
     }
-
-    $item->delete();
-
-    return redirect()->back()->with('message', 'Item deleted successfully');
-}
 
     // app/Http/Controllers/InventoryController.php
 
+    // InventoryController.php
+
+    public function handleTransfer(Request $request, $id)
+    {
+        $request->validate(['to_site_id' => 'required|exists:sites,id']);
+
+        $equipment = Equipment::findOrFail($id);
+
+        // Ensure this matches your column name: 'current_site_id'
+        $equipment->update([
+            'current_site_id' => $request->to_site_id
+        ]);
+
+        return back(); // This triggers the 303 refresh
+    }
     public function linkSpare(Request $request)
     {
         $request->validate([
@@ -178,52 +240,61 @@ class InventoryController extends Controller
             'parent_id' => 'required|exists:equipment,id',
         ]);
 
+        $parent = Equipment::findOrFail($request->parent_id);
         $spare = Equipment::findOrFail($request->spare_id);
 
-        // Update the spare to link it to the Rig
         $spare->update([
             'parent_id' => $request->parent_id,
-            'is_attachment' => 1, // Ensure it stays marked as an attachment
-            'current_site_id' => Equipment::find($request->parent_id)->current_site_id // Match the Rig's location
+            // Sync site with parent rig so it doesn't stay in "Warehouse"
+            'current_site_id' => $parent->current_site_id,
+            'status' => 'Working'
         ]);
 
-        return redirect()->back()->with('message', 'Spare linked to Rig successfully!');
+        return back()->with('success', 'Spare linked successfully');
     }
-// app/Http/Controllers/InventoryController.php
+    // app/Http/Controllers/InventoryController.php
 
-public function unlinkSpare(Request $request)
-{
-    $request->validate([
-        'spare_id' => 'required|exists:equipment,id',
-    ]);
+    // app/Http/Controllers/InventoryController.php
+    public function unlinkSpare($id)
+    {
+        // 1. Find the spare item by ID
+        $spare = Equipment::findOrFail($id);
 
-    $spare = Equipment::findOrFail($request->spare_id);
+        // 2. Clear the parent_id and reset status
+        $spare->update([
+            'parent_id' => null,
+            'status' => 'In Stock'
+        ]);
 
-    // Reset parent and move back to general stock
-    $spare->update([
-        'parent_id' => null,
-        'is_attachment' => 1,
-        // Optionally set status to 'In Stock' when unlinked
-        'status' => 'In Stock'
-    ]);
+        // 3. Return back to refresh the Inertia props
+        return back()->with('success', 'Component unlinked and moved to warehouse.');
+    }    // app/Http/Controllers/InventoryController.php
+    // InventoryController.php
+    public function getLogs($id)
+    {
+        $logs = \App\Models\MaintenanceRecord::where('equipment_id', $id)
+            ->with('mechanic:id,name') // Assumes a 'mechanic' relationship exists in your Model
+            ->orderBy('service_date', 'desc')
+            ->orderBy('id', 'desc') // Secondary sort by ID in descending order
+            ->get();
 
-    return redirect()->back()->with('message', 'Spare moved back to Warehouse.');
-}
-// app/Http/Controllers/InventoryController.php
+        return response()->json($logs);
+    }
 
-public function storeLog(Request $request)
-{
-    $validated = $request->validate([
-        'equipment_id'    => 'required|exists:equipment,id',
-        'service_date'    => 'required|date',
-        'running_hours'   => 'required|numeric',
-        'service_type'    => 'required|string|max:255',
-        'parts_replaced'  => 'nullable|string',
-        'mechanic_id'     => 'nullable|exists:employees,id', // Added based on your model
-    ]);
+    public function storeServiceLog(Request $request)
+    {
+        $validated = $request->validate([
+            'equipment_id'  => 'required|exists:equipment,id',
+            'mechanic_id'   => 'required|exists:employees,id',
+            'service_date'  => 'required|date',
+            'running_hours' => 'required|numeric',
+            'service_type'  => 'required|string|max:255',
+            'parts_replaced' => 'nullable|string',
+        ]);
 
-    MaintenanceRecord::create($validated);
+        \App\Models\MaintenanceRecord::create($validated);
 
-    return redirect()->back()->with('message', 'Service Record Added!');
-}
+        // This triggers the 302 redirect that Inertia needs to refresh the props
+        return back()->with('success', 'Log added successfully');
+    }
 }
