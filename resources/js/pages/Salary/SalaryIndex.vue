@@ -158,7 +158,6 @@ const confirmMonthlyProcess = () => {
 <template>
 
     <Head title="Payroll Master" />
-    <!--<pre>{{ employees }}</pre>-->
     <div class="min-h-screen bg-gray-100 p-6 font-sans text-slate-900 print:bg-white print:p-0">
         <div class="max-w-6xl mx-auto">
 

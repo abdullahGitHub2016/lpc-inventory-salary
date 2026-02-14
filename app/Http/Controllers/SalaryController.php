@@ -224,27 +224,29 @@ class SalaryController extends Controller
             ]);
 
             // 2. Process each employee
+            // app/Http/Controllers/SalaryController.php
+
             foreach ($employees as $emp) {
-                // 1. Get the sum of advances
+                // 1. Calculate advances for the month
                 $advanceSum = DB::table('salary_advances')
                     ->where('employee_id', $emp->id)
                     ->whereMonth('advance_date', $monthNumber)
                     ->whereYear('advance_date', $year)
                     ->sum('amount') ?? 0;
 
-                // 2. Ensure base_salary is a number (FIXES THE NULL ERROR)
-                $baseSalary = $emp->base_salary ?? 0;
+                // 2. Ensure we use the correct column: total_salary
+                $baseSalary = $emp->total_salary ?? 0;
 
                 // 3. Calculate net payable
                 $netPayable = $baseSalary - $advanceSum;
                 $grandTotalPayout += $netPayable;
 
-                // 4. Insert into details
+                // 4. THE FIX: Add 'designation' to the insert query
                 DB::table('salary_sheet_details')->insert([
                     'salary_sheet_id' => $salarySheetId,
                     'employee_id'     => $emp->employee_id,
                     'name'            => $emp->name,
-                    'base_salary'     => $baseSalary, // Now this will be 0 instead of NULL
+                    'base_salary'     => $baseSalary,
                     'advance'         => $advanceSum,
                     'net_payable'     => $netPayable,
                     'created_at'      => now(),
@@ -258,17 +260,13 @@ class SalaryController extends Controller
             ]);
 
             // 5. CLEAR live advances for the processed month
-            DB::table('salary_advances')
-                ->whereMonth('advance_date', $monthNumber)
-                ->whereYear('advance_date', $year)
-                ->delete();
+            DB::table('salary_advances')->delete();
 
             DB::commit();
 
             return redirect()->route('salary.archive.index')
                 ->with('success', "Payroll for $monthName $year has been archived.");
         } catch (\Exception $e) {
-            dd($e);
             DB::rollback();
             return back()->with('error', 'Server Error: ' . $e->getMessage());
         }
@@ -300,52 +298,65 @@ class SalaryController extends Controller
     }
     // app/Http/Controllers/SalaryController.php
 
-    public function rollbackArchive($month, $year)
-    {
-        DB::beginTransaction();
-        try {
-            $archive = DB::table('salary_sheets')
-                ->where('month', $month)
-                ->where('year', $year)
-                ->first();
+    // app/Http/Controllers/SalaryController.php
 
-            if (!$archive) return back()->with('error', 'Archive not found.');
+public function rollbackArchive($month, $year)
+{
+    // FIX: Get current timing to restrict rollback
+    $now = \Carbon\Carbon::now();
+    $currentMonth = $now->format('F');
+    $currentYear = $now->year;
 
-            $details = DB::table('salary_sheet_details')
-                ->where('salary_sheet_id', $archive->id)
-                ->get();
+    // Validation: Only allow rollback if it matches the current active month/year
+    if ($month !== $currentMonth || (int)$year !== $currentYear) {
+        return back()->with('error', 'Security: You can only rollback the most recent active month.');
+    }
 
-            foreach ($details as $row) {
-                if ($row->advance > 0) {
-                    // Find internal ID based on the string ID stored in details
-                    $internalEmpId = DB::table('employees')
-                        ->where('employee_id', $row->employee_id)
-                        ->value('id');
+    DB::beginTransaction();
+    try {
+        $archive = DB::table('salary_sheets')
+            ->where('month', $month)
+            ->where('year', $year)
+            ->first();
 
-                    if ($internalEmpId) {
-                        DB::table('salary_advances')->insert([
-                            'employee_id' => $internalEmpId,
-                            'reason_id'   => 1, // Assumes 1 is a default reason
-                            'amount'      => $row->advance,
-                            'advance_date' => now(), // Moves to current date for the live ledger
-                            'created_at'  => now(),
-                            'updated_at'  => now(),
-                        ]);
-                    }
+        if (!$archive) return back()->with('error', 'Archive record not found.');
+
+        $details = DB::table('salary_sheet_details')
+            ->where('salary_sheet_id', $archive->id)
+            ->get();
+
+        foreach ($details as $row) {
+            if ($row->advance > 0) {
+                $internalEmpId = DB::table('employees')
+                    ->where('employee_id', $row->employee_id)
+                    ->value('id');
+
+                if ($internalEmpId) {
+                    // Restore advances back to 'pending' for the live ledger
+                    DB::table('salary_advances')->insert([
+                        'employee_id' => $internalEmpId,
+                        'reason_id'   => 1,
+                        'amount'      => $row->advance,
+                        'advance_date' => now(),
+                        'status'      => 'pending',
+                        'created_at'  => now(),
+                        'updated_at'  => now(),
+                    ]);
                 }
             }
-
-            // Clean up archive tables
-            DB::table('salary_sheet_details')->where('salary_sheet_id', $archive->id)->delete();
-            DB::table('salary_sheets')->where('id', $archive->id)->delete();
-
-            DB::commit();
-            return redirect()->route('salary.index')->with('success', 'Month reopened for editing.');
-        } catch (\Exception $e) {
-            DB::rollback();
-            return back()->with('error', 'Rollback failed: ' . $e->getMessage());
         }
+
+        // Clean up archive tables for this specific month
+        DB::table('salary_sheet_details')->where('salary_sheet_id', $archive->id)->delete();
+        DB::table('salary_sheets')->where('id', $archive->id)->delete();
+
+        DB::commit();
+        return redirect()->route('salary.index')->with('success', 'Month successfully reopened.');
+    } catch (\Exception $e) {
+        DB::rollback();
+        return back()->with('error', 'Rollback failed: ' . $e->getMessage());
     }
+}
     // Helper to convert LPC-001 back to internal primary key
     private function getInternalId($empStringId)
     {

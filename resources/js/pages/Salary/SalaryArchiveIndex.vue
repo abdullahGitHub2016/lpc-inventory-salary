@@ -26,9 +26,12 @@ const deleteArchive = (month, year) => {
     }
 };
 
-// Add this function
+// Add these constants to define the current month/year
+const currentMonth = new Date().toLocaleDateString('en-GB', { month: 'long' });
+const currentYear = new Date().getFullYear();
+
 const rollbackMonth = (month, year) => {
-    if (confirm(`Are you sure? This will delete the archive and move all ${month} ${year} data back to the LIVE ledger for editing.`)) {
+    if (confirm(`Are you sure? This will delete the archive and move all ${month} ${year} data back to the LIVE ledger.`)) {
         router.post(route('salary.archive.rollback', { month, year }));
     }
 };
@@ -37,6 +40,7 @@ const rollbackMonth = (month, year) => {
 <template>
 
     <Head title="Salary Archive" />
+    <pre>{{ history }}</pre>
 
     <div class="min-h-screen bg-gray-100 p-6 font-sans text-slate-900">
         <div class="max-w-6xl mx-auto">
@@ -68,6 +72,7 @@ const rollbackMonth = (month, year) => {
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 <div v-for="record in history" :key="record.id"
                     class="group bg-white rounded-[40px] overflow-hidden border border-slate-200 shadow-sm hover:shadow-2xl transition-all flex flex-col relative">
+
 
                     <button @click="deleteArchive(record.month, record.year)"
                         class="absolute top-5 right-5 p-2 bg-red-50 text-red-500 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white z-20 shadow-sm transition-all">
@@ -106,9 +111,10 @@ const rollbackMonth = (month, year) => {
                     </div>
 
                     <div class="flex border-t border-slate-100">
-                        <button @click="rollbackMonth(record.month, record.year)"
-                            class="flex-1 py-5 bg-amber-50 text-amber-600 hover:bg-amber-600 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest border-r border-slate-100">
-                            🔄 Rollback
+                        <button v-if="record.month === currentMonth && record.year === currentYear"
+                            @click="rollbackMonth(record.month, record.year)"
+                            class="flex-1 py-5 bg-orange-50 text-orange-600 text-[10px] font-black uppercase tracking-widest hover:bg-orange-100 transition-colors border-r border-slate-100">
+                            Rollback
                         </button>
 
                         <Link :href="route('salary.archive.show', { month: record.month, year: record.year })"
