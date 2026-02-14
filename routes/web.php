@@ -14,6 +14,7 @@ use App\Http\Controllers\InventoryController;
 Route::middleware(['auth'])->group(function () {
     // Dashboard Home
     Route::get('/dashboard', [HomeController::class, 'index'])->name('dashboard');
+    Route::get('/', [HomeController::class, 'index'])->name('dashboard');
 
     // ADVANCE REASONS - Fixed Route Names
     Route::post('/settings/reasons', [HomeController::class, 'storeReason'])->name('settings.reasons.store');
@@ -56,7 +57,7 @@ Route::middleware(['auth'])->group(function () {
     // Route for Warehouse/Spares
     Route::get('/depo', [InventoryController::class, 'depoIndex'])->name('inventory.depo');
 
-    Route::get('/inventory', [InventoryController::class, 'index'])->name('inventory.index');
+    Route::get('/inventory', [InventoryController::class, 'fleetIndex'])->name('inventory.fleet');
 
     // Add your other existing inventory routes here
     Route::post('/inventory', [InventoryController::class, 'store'])->name('inventory.store');
