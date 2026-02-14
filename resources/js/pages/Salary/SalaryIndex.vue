@@ -171,8 +171,9 @@ const confirmMonthlyProcess = () => {
                             Active Month: {{ currentMonthName }}
                         </p>
                     </div>
+
                     <Link :href="route('salary.archive.index')"
-                        class="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-slate-500 hover:text-indigo-600 transition-all shadow-sm">
+                        class="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-slate-500 hover:text-indigo-600 transition-all shadow-sm self-start mt-1">
                         <span class="text-lg">📂</span>
                         <p class="text-[10px] font-black uppercase italic">Archives</p>
                     </Link>
@@ -182,22 +183,24 @@ const confirmMonthlyProcess = () => {
                     <input v-model="searchQuery" type="text" placeholder="Search Name/ID..."
                         class="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 w-64 shadow-sm" />
 
-                    <button @click="printLedger"
-                        class="bg-slate-800 text-white px-5 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-colors">
-                        Print 🖨️
-                    </button>
-                    <button @click="openCreateModal"
-                        class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black uppercase italic text-[10px] tracking-widest hover:bg-slate-900 transition-all shadow-xl active:scale-95">
-                        + New Employee
-                    </button>
-                    <button @click="confirmMonthlyProcess"
-                        class="bg-white border-2 border-emerald-500 text-emerald-600 px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-50 transition-colors">
-                        Close Month
-                    </button>
-                    <button @click="showAdvanceModal = true"
-                        class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all">
-                        + New Advance
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button @click="printLedger"
+                            class="bg-slate-800 text-white px-5 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-colors">
+                            Print 🖨️
+                        </button>
+                        <button @click="openCreateModal"
+                            class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-black uppercase italic text-[10px] tracking-widest hover:bg-slate-900 transition-all shadow-md">
+                            + Staff
+                        </button>
+                        <button @click="showAdvanceModal = true"
+                            class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-black uppercase italic text-[10px] tracking-widest shadow-md hover:bg-indigo-700 transition-all">
+                            + Advance
+                        </button>
+                        <button @click="confirmMonthlyProcess"
+                            class="bg-white border-2 border-emerald-500 text-emerald-600 px-6 py-2.5 rounded-xl font-black uppercase italic text-[10px] tracking-widest hover:bg-emerald-50 transition-colors">
+                            Close Month
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -250,9 +253,10 @@ const confirmMonthlyProcess = () => {
                                     <button @click="openEditModal(emp)" class="hover:scale-125 transition-transform">
                                         ✏️
                                     </button>
-                                    <button @click="deleteEmployee(emp.id)" class="text-red-400 hover:text-red-600" title="Delete">
-        🗑️
-    </button>
+                                    <button @click="deleteEmployee(emp.id)" class="text-red-400 hover:text-red-600"
+                                        title="Delete">
+                                        🗑️
+                                    </button>
                                 </div>
                             </td>
                         </tr>

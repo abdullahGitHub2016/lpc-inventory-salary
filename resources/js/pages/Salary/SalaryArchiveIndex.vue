@@ -40,7 +40,7 @@ const rollbackMonth = (month, year) => {
 <template>
 
     <Head title="Salary Archive" />
-    <pre>{{ history }}</pre>
+    <!-- <pre>{{ history }}</pre> -->
 
     <div class="min-h-screen bg-gray-100 p-6 font-sans text-slate-900">
         <div class="max-w-6xl mx-auto">
