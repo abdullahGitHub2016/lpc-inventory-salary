@@ -9,16 +9,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Equipment extends Model
 {
     protected $fillable = [
-    'name',
-    'serial_number',
-    'current_site_id',
-    'status',
-    'is_attachment', // ADD THIS
-    'category_id',   // ADD THIS
-    'brand_id',      // ADD THIS
-    'parent_id',
-    'model',
-];
+        'name',
+        'serial_number',
+        'current_site_id',
+        'status',
+        'is_attachment', // ADD THIS
+        'category_id',   // ADD THIS
+        'brand_id',      // ADD THIS
+        'parent_id',
+        'model',
+    ];
 
     // Relationship to Category
     public function category()
@@ -41,24 +41,25 @@ class Equipment extends Model
         return $this->hasMany(InventoryMovement::class)->orderBy('transfer_date', 'desc');
     }
 
-// Relationship for "Outside" spares
-public function spares() {
-    return $this->hasMany(Equipment::class, 'parent_id');
-}
+    // Relationship for "Outside" spares
+    public function spares()
+    {
+        return $this->hasMany(Equipment::class, 'parent_id');
+    }
 
-// Relationship for "Inside" maintenance history
-public function maintenanceLogs()
-{
-    return $this->hasMany(MaintenanceRecord::class, 'equipment_id')
-                ->latest('service_date') // Sorts by date DESC
-                ->latest('id');          // Secondary sort for items on the same day
-}
-/**
- * Get the main Rig this spare is attached to.
- */
-public function parent()
-{
-    // We reference the same model (Equipment) using the parent_id column
-    return $this->belongsTo(Equipment::class, 'parent_id');
-}
+    // Relationship for "Inside" maintenance history
+    public function maintenanceLogs()
+    {
+        return $this->hasMany(MaintenanceRecord::class, 'equipment_id')
+            ->latest('service_date') // Sorts by date DESC
+            ->latest('id');          // Secondary sort for items on the same day
+    }
+    /**
+     * Get the main Rig this spare is attached to.
+     */
+    public function parent()
+    {
+        // We reference the same model (Equipment) using the parent_id column
+        return $this->belongsTo(Equipment::class, 'parent_id');
+    }
 }

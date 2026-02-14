@@ -74,10 +74,15 @@ const cancelEdit = () => {
                         class="group bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:shadow-xl transition-all">
                         <h3 class="text-2xl font-black uppercase italic text-slate-900">Salary Management</h3>
                     </Link>
-                    <Link :href="route('inventory.index')"
+                    <Link :href="route('inventory.fleet')"
                         class="group bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:shadow-xl transition-all">
-                        <h3 class="text-2xl font-black uppercase italic text-slate-900">Inventory Hub</h3>
+                        <h3 class="text-2xl font-black uppercase italic text-slate-900">Fleet Hub</h3>
                     </Link>
+                    <Link :href="route('inventory.depo')"
+                        class="group bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:shadow-xl transition-all">
+                        <h3 class="text-2xl font-black uppercase italic text-slate-900">Depo Hub</h3>
+                    </Link>
+
                 </div>
 
                 <div class="bg-white rounded-[40px] p-10 shadow-sm border border-slate-200">

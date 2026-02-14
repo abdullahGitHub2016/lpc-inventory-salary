@@ -222,16 +222,23 @@ class InventoryController extends Controller
 
     public function handleTransfer(Request $request, $id)
     {
-        $request->validate(['to_site_id' => 'required|exists:sites,id']);
+        $request->validate([
+            'to_site_id' => 'required|exists:sites,id',
+        ]);
 
         $equipment = Equipment::findOrFail($id);
 
-        // Ensure this matches your column name: 'current_site_id'
+        // Update the Rig
         $equipment->update([
             'current_site_id' => $request->to_site_id
         ]);
 
-        return back(); // This triggers the 303 refresh
+        // Update all attached components so they "move" with the machine
+        Equipment::where('parent_id', $id)->update([
+            'current_site_id' => $request->to_site_id
+        ]);
+
+        return back();
     }
     public function linkSpare(Request $request)
     {
@@ -245,30 +252,35 @@ class InventoryController extends Controller
 
         $spare->update([
             'parent_id' => $request->parent_id,
-            // Sync site with parent rig so it doesn't stay in "Warehouse"
+            // SYNC SITE: The spare moves to where the Rig is
             'current_site_id' => $parent->current_site_id,
             'status' => 'Working'
         ]);
 
-        return back()->with('success', 'Spare linked successfully');
+        return back();
     }
-    // app/Http/Controllers/InventoryController.php
 
-    // app/Http/Controllers/InventoryController.php
     public function unlinkSpare($id)
     {
         // 1. Find the spare item by ID
         $spare = Equipment::findOrFail($id);
 
-        // 2. Clear the parent_id and reset status
+        // 2. Find your "Warehouse" or "Depo" site ID
+        // You can hardcode this ID or look it up by name
+        $warehouse = \App\Models\Site::where('location_name', 'LIKE', '%Warehouse%')
+            ->orWhere('location_name', 'LIKE', '%Depo%')
+            ->first();
+
+        // 3. Update both the link AND the location
         $spare->update([
             'parent_id' => null,
-            'status' => 'In Stock'
+            'status' => 'In Stock',
+            'current_site_id' => $warehouse ? $warehouse->id : null, // Move back to Warehouse
         ]);
 
-        // 3. Return back to refresh the Inertia props
-        return back()->with('success', 'Component unlinked and moved to warehouse.');
-    }    // app/Http/Controllers/InventoryController.php
+        // 4. Return back to refresh the Inertia props (triggers the 303 See Other)
+        return back()->with('success', 'Component unlinked and moved back to Warehouse.');
+    }
     // InventoryController.php
     public function getLogs($id)
     {
