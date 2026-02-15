@@ -77,7 +77,7 @@ Route::middleware(['auth'])->group(function () {
         ->name('inventory.unlink-spare');
     // Change Route::put to Route::post
     Route::put('/inventory/transfer/{id}', [InventoryController::class, 'handleTransfer'])
-    ->name('inventory.transfer');
+        ->name('inventory.transfer');
 
     Route::post('/inventory/service-logs', [InventoryController::class, 'storeServiceLog'])
         ->name('inventory.service-logs.store');
@@ -91,8 +91,13 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/inventory/rig/{id}/spares', [InventoryController::class, 'rigSpares'])->name('inventory.rig.spares');
     Route::post('/inventory/rig/{id}/add-spare', [InventoryController::class, 'addSpareToCatalogue'])
-     ->name('inventory.rig.add-spare');
-     Route::get('/inventory/lookup-part/{serial}', [InventoryController::class, 'lookupPart']);
+        ->name('inventory.rig.add-spare');
+    Route::get('/inventory/lookup-part/{serial}', [InventoryController::class, 'lookupPart']);
+    // Make sure this exists and matches your Vue axios/router call
+    Route::post('/inventory/rig/{id}/upload-manuals', [InventoryController::class, 'uploadDocuments'])
+        ->name('inventory.rig.upload-manuals');
+    Route::delete('/inventory/documents/{id}', [InventoryController::class, 'deleteDocument'])
+        ->name('inventory.documents.delete');
 });
 
 // --- 1. AUTHENTICATION (Login, Logout, etc) ---

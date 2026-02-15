@@ -81,10 +81,86 @@ const handleUnlink = (id) => {
         router.post(`/inventory/unlink-spare/${id}`, {}, { preserveScroll: true });
     }
 };
+
+const handleFileUpload = (event) => {
+    const files = event.target.files;
+    if (!files.length) return;
+
+    const formData = new FormData();
+    // Rig ID 152
+    formData.append('equipment_id', props.rig.id);
+
+    // Append all selected files
+    for (let i = 0; i < files.length; i++) {
+        formData.append('documents[]', files[i]); // <--- Ensure this name matches the Controller
+    }
+
+    // Send to server via Inertia or Axios
+    router.post(`/inventory/rig/${props.rig.id}/upload-manuals`, formData, {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            console.log("Manuals uploaded successfully");
+        }
+    });
+};
+
+const deleteDoc = (docId) => {
+    if (confirm("Are you sure you want to remove this manual?")) {
+        router.delete(`/inventory/documents/${docId}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                console.log("Document removed");
+            }
+        });
+    }
+};
 </script>
 
 <template>
     <div class="p-6 bg-slate-50 min-h-screen font-sans">
+        <div class="max-w-7xl mx-auto mb-10">
+            <div class="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xs font-black uppercase text-slate-400 tracking-widest italic">Technical Library &
+                        Manuals</h3>
+
+                    <input type="file" multiple class="hidden" ref="fileUpload" @change="handleFileUpload" />
+                    <button @click="$refs.fileUpload.click()"
+                        class="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 transition">
+                        + Upload New Manual
+                    </button>
+                </div>
+
+                <div v-if="rig.documents && rig.documents.length > 0"
+                    class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div v-for="doc in rig.documents" :key="doc.id"
+                        class="group flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-transparent hover:border-indigo-200 hover:bg-white transition-all shadow-sm">
+
+                        <div class="w-10 h-10 flex items-center justify-center rounded-xl bg-white shadow-sm text-lg">
+                            {{ doc.file_type === 'pdf' ? '📕' : '📘' }}
+                        </div>
+
+                        <div class="flex flex-col overflow-hidden">
+                            <span class="text-xs font-bold text-slate-700 truncate" :title="doc.file_name">
+                                {{ doc.file_name }}
+                            </span>
+                            <div class="flex gap-3 mt-1">
+                                <a :href="doc.file_path" target="_blank"
+                                    class="text-[9px] font-black uppercase text-indigo-500 hover:underline">View</a>
+                                <button @click="deleteDoc(doc.id)"
+                                    class="text-[9px] font-black uppercase text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else
+                    class="text-center py-6 border-2 border-dashed border-slate-100 rounded-3xl text-slate-400 text-xs italic">
+                    No manuals uploaded yet.
+                </div>
+            </div>
+        </div>
 
         <div class="max-w-7xl mx-auto mb-8 flex justify-between items-end">
             <div>
@@ -171,22 +247,26 @@ const handleUnlink = (id) => {
                         </thead>
                         <tbody class="divide-y divide-slate-50">
                             <tr v-for="part in parts" :key="part.id" class="hover:bg-slate-50/80 transition-colors">
-                                <td class="px-8 py-5 font-bold text-slate-700">{{ part.name }}</td>
-                                <td class="px-8 py-5">
-                                    <span class="font-mono text-xs bg-slate-100 px-3 py-1 rounded-md text-slate-600">{{
-                                        part.serial_number }}</span>
+                                <td class="px-8 py-5 font-bold text-slate-700">
+                                    {{ part.name }}
+                                </td>
+                                <td class="px-8 py-5 font-mono text-xs">
+                                    {{ part.serial_number }}
                                 </td>
                                 <td class="px-8 py-5">
-                                    <span
-                                        class="text-[9px] font-black uppercase px-3 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600">
-                                        {{ part.status }}
+                                    <div class="flex flex-col">
+                                        <span class="text-[10px] font-black uppercase text-slate-900">
+                                            {{ rig.current_site?.location_name }}
+                                        </span>
+                                        <span class="text-[9px] text-slate-400 italic">Attached to Machine</span>
+                                    </div>
+                                </td>
+                                <td class="px-8 py-5">
+                                    <span v-if="part.global_stock_count > 0"
+                                        class="text-indigo-600 font-bold text-[10px] bg-indigo-50 px-2 py-1 rounded">
+                                        {{ part.global_stock_count }} More in Warehouse
                                     </span>
-                                </td>
-                                <td class="px-8 py-5 text-right">
-                                    <button @click="handleUnlink(part.id)"
-                                        class="text-slate-300 hover:text-red-500 font-black text-[10px] uppercase transition">
-                                        Unlink
-                                    </button>
+                                    <span v-else class="text-slate-300 text-[10px]">No extra stock</span>
                                 </td>
                             </tr>
                         </tbody>

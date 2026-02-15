@@ -6,11 +6,13 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Employee;
 use App\Models\Equipment;
+use App\Models\EquipmentDocument;
 use App\Models\InventoryMovement;
 use App\Models\MaintenanceRecord;
 use App\Models\Site;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class InventoryController extends Controller
@@ -313,17 +315,22 @@ class InventoryController extends Controller
 
     public function rigSpares($id)
     {
-        $rig = Equipment::with('currentSite')->findOrFail($id);
+        // Load Rig with current site and uploaded documents
+        $rig = Equipment::with(['currentSite', 'documents'])->findOrFail($id);
 
-        // Get current spares for this rig
-        $sparesGrouped = Equipment::where('parent_id', $id)
-            ->get()
-            ->groupBy('functional_group');
+        // Get spares for this rig and calculate "Global Stock"
+        $spares = Equipment::where('parent_id', $id)->get();
 
-        // Get unique functional groups from the WHOLE database for suggestions
-        $existingGroups = Equipment::whereNotNull('functional_group')
-            ->distinct()
-            ->pluck('functional_group');
+        // Logic to show "Stock and Site":
+        // We map through spares to find how many more exist in other locations
+        $sparesWithStock = $spares->map(function ($spare) {
+            $spare->global_stock_count = Equipment::where('serial_number', $spare->serial_number)
+                ->whereNull('parent_id') // Only count those in Warehouse/Stock
+                ->count();
+            return $spare;
+        });
+
+        $sparesGrouped = $sparesWithStock->groupBy('functional_group');
 
         $warehouseSpares = Equipment::where('is_attachment', 1)
             ->whereNull('parent_id')
@@ -333,10 +340,9 @@ class InventoryController extends Controller
             'rig' => $rig,
             'sparesGrouped' => $sparesGrouped,
             'warehouseSpares' => $warehouseSpares,
-            'existingGroups' => $existingGroups // Pass this to Vue
+            'existingGroups' => Equipment::distinct()->pluck('functional_group')
         ]);
     }
-
     public function addSpareToCatalogue(Request $request, $id)
     {
         // 1. Validate the input
@@ -386,5 +392,47 @@ class InventoryController extends Controller
             'part'   => $part,
             'is_attached' => $part && $part->parent_id !== null
         ]);
+    }
+    public function uploadDocuments(Request $request, $id)
+    {
+        // 1. Debug: Check if the request even hits this method
+        // dd($request->all());
+
+        $rig = Equipment::findOrFail($id); // If $id is wrong, this returns 404
+
+        if ($request->hasFile('documents')) {
+            foreach ($request->file('documents') as $file) {
+                // Store in 'public/manuals' folder
+                $path = $file->store('manuals', 'public');
+
+                $rig->documents()->create([
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_path' => '/storage/' . $path, // This prefix requires the storage link
+                    'file_type' => $file->getClientOriginalExtension(),
+                    'file_size' => $file->getSize(),
+                ]);
+            }
+        }
+
+        return back();
+    }
+
+
+    public function deleteDocument($id)
+    {
+        $document = EquipmentDocument::findOrFail($id);
+
+        // 1. Remove the physical file from storage
+        // We strip the "/storage/" prefix to get the relative path for the Storage facade
+        $relativePath = str_replace('/storage/', '', $document->file_path);
+
+        if (Storage::disk('public')->exists($relativePath)) {
+            Storage::disk('public')->delete($relativePath);
+        }
+
+        // 2. Delete the record from the database
+        $document->delete();
+
+        return back()->with('success', 'Document deleted successfully.');
     }
 }

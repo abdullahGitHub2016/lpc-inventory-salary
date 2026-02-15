@@ -42,7 +42,9 @@ class Equipment extends Model
         return $this->hasMany(InventoryMovement::class)->orderBy('transfer_date', 'desc');
     }
 
-    // Relationship for "Outside" spares
+    /**
+     * Get all spare parts attached to this machine.
+     */
     public function spares()
     {
         return $this->hasMany(Equipment::class, 'parent_id');
@@ -62,5 +64,10 @@ class Equipment extends Model
     {
         // We reference the same model (Equipment) using the parent_id column
         return $this->belongsTo(Equipment::class, 'parent_id');
+    }
+    // Inside Equipment.php
+    public function documents()
+    {
+        return $this->hasMany(EquipmentDocument::class, 'equipment_id');
     }
 }
