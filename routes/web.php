@@ -88,6 +88,11 @@ Route::middleware(['auth'])->group(function () {
 
     Route::delete('/inventory/service-logs/{id}', [InventoryController::class, 'destroyServiceLog'])
         ->name('inventory.service-logs.destroy');
+
+    Route::get('/inventory/rig/{id}/spares', [InventoryController::class, 'rigSpares'])->name('inventory.rig.spares');
+    Route::post('/inventory/rig/{id}/add-spare', [InventoryController::class, 'addSpareToCatalogue'])
+     ->name('inventory.rig.add-spare');
+     Route::get('/inventory/lookup-part/{serial}', [InventoryController::class, 'lookupPart']);
 });
 
 // --- 1. AUTHENTICATION (Login, Logout, etc) ---

@@ -109,6 +109,7 @@ class InventoryController extends Controller
         $validated = $request->validate([
             'name'            => 'required|string|max:255',
             'serial_number'   => 'required|unique:equipment,serial_number',
+            'functional_group' => 'nullable|string', // Capture the group
             'current_site_id' => 'required|exists:sites,id',
             'status'          => 'required|string',
             'is_attachment'   => 'required|integer', // Validate the payload value
@@ -308,5 +309,82 @@ class InventoryController extends Controller
 
         // This triggers the 302 redirect that Inertia needs to refresh the props
         return back()->with('success', 'Log added successfully');
+    }
+
+    public function rigSpares($id)
+    {
+        $rig = Equipment::with('currentSite')->findOrFail($id);
+
+        // Get current spares for this rig
+        $sparesGrouped = Equipment::where('parent_id', $id)
+            ->get()
+            ->groupBy('functional_group');
+
+        // Get unique functional groups from the WHOLE database for suggestions
+        $existingGroups = Equipment::whereNotNull('functional_group')
+            ->distinct()
+            ->pluck('functional_group');
+
+        $warehouseSpares = Equipment::where('is_attachment', 1)
+            ->whereNull('parent_id')
+            ->get();
+
+        return Inertia::render('Inventory/RigSparesCatalogue', [
+            'rig' => $rig,
+            'sparesGrouped' => $sparesGrouped,
+            'warehouseSpares' => $warehouseSpares,
+            'existingGroups' => $existingGroups // Pass this to Vue
+        ]);
+    }
+
+    public function addSpareToCatalogue(Request $request, $id)
+    {
+        // 1. Validate the input
+        $request->validate([
+            'spare_id'         => 'nullable|exists:equipment,id',
+            'new_part_name'    => 'nullable|required_without:spare_id|string',
+            'part_number'      => 'required|string', // This is the Serial Number in your DB
+            'functional_group' => 'required|string',
+        ]);
+
+        $rig = Equipment::findOrFail($id);
+
+        // 2. Scenario A: Linking an existing spare from the Warehouse
+        if ($request->spare_id) {
+            $equipment = Equipment::findOrFail($request->spare_id);
+
+            $equipment->update([
+                'parent_id'        => $rig->id,
+                'functional_group' => $request->functional_group,
+                'serial_number'    => $request->part_number, // Sync with PDF part number
+                'current_site_id'  => $rig->current_site_id, // Inherit Rig's location
+                'status'           => 'Working'
+            ]);
+        }
+        // 3. Scenario B: Creating a brand new part from the PDF
+        else {
+            Equipment::create([
+                'name'             => $request->new_part_name,
+                'serial_number'    => $request->part_number,
+                'functional_group' => $request->functional_group,
+                'parent_id'        => $rig->id,
+                'current_site_id'  => $rig->current_site_id, // Automatically place it where the Rig is
+                'status'           => 'Working',
+                'is_attachment'    => 1, // Mark as a spare/component
+            ]);
+        }
+
+        return back()->with('success', 'Catalogue updated successfully.');
+    }
+    public function lookupPart($serial)
+    {
+        // Find the part and include its current parent (machine) name if it has one
+        $part = Equipment::with('parent')->where('serial_number', $serial)->first();
+
+        return response()->json([
+            'exists' => !!$part,
+            'part'   => $part,
+            'is_attached' => $part && $part->parent_id !== null
+        ]);
     }
 }

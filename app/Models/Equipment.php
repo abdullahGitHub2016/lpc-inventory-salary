@@ -11,6 +11,7 @@ class Equipment extends Model
     protected $fillable = [
         'name',
         'serial_number',
+        'functional_group', // <--- MAKE SURE THIS IS HERE
         'current_site_id',
         'status',
         'is_attachment', // ADD THIS
