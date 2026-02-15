@@ -265,24 +265,30 @@ class InventoryController extends Controller
 
     public function unlinkSpare($id)
     {
-        // 1. Find the spare item by ID
-        $spare = Equipment::findOrFail($id);
+        $itemOnRig = Equipment::findOrFail($id);
+        $partNumber = $itemOnRig->serial_number;
 
-        // 2. Find your "Warehouse" or "Depo" site ID
-        // You can hardcode this ID or look it up by name
-        $warehouse = \App\Models\Site::where('location_name', 'LIKE', '%Warehouse%')
-            ->orWhere('location_name', 'LIKE', '%Depo%')
+        // 1. Look for an existing "Warehouse" version of this part
+        $warehouseItem = Equipment::where('serial_number', $partNumber)
+            ->whereNull('parent_id')
             ->first();
 
-        // 3. Update both the link AND the location
-        $spare->update([
-            'parent_id' => null,
-            'status' => 'In Stock',
-            'current_site_id' => $warehouse ? $warehouse->id : null, // Move back to Warehouse
-        ]);
+        if ($warehouseItem) {
+            // SCENARIO: Warehouse entry exists, just add the quantity back
+            $warehouseItem->increment('quantity', $itemOnRig->quantity);
 
-        // 4. Return back to refresh the Inertia props (triggers the 303 See Other)
-        return back()->with('success', 'Component unlinked and moved back to Warehouse.');
+            // Remove the rig-specific entry
+            $itemOnRig->delete();
+        } else {
+            // SCENARIO: No warehouse entry exists, make this the new warehouse entry
+            $itemOnRig->update([
+                'parent_id' => null,
+                'functional_group' => null, // Clear the group as it's no longer on a rig
+                'status' => 'In Stock'
+            ]);
+        }
+
+        return back()->with('success', 'Item returned to warehouse and stock updated.');
     }
     // InventoryController.php
     public function getLogs($id)
@@ -315,73 +321,90 @@ class InventoryController extends Controller
 
     public function rigSpares($id)
     {
-        // Load Rig with current site and uploaded documents
         $rig = Equipment::with(['currentSite', 'documents'])->findOrFail($id);
 
-        // Get spares for this rig and calculate "Global Stock"
+        // 1. Get all spares for this rig
         $spares = Equipment::where('parent_id', $id)->get();
 
-        // Logic to show "Stock and Site":
-        // We map through spares to find how many more exist in other locations
+        // 2. Attach the Warehouse Stock count to each item
         $sparesWithStock = $spares->map(function ($spare) {
-            $spare->global_stock_count = Equipment::where('serial_number', $spare->serial_number)
-                ->whereNull('parent_id') // Only count those in Warehouse/Stock
-                ->count();
+            // We sum the 'quantity' column for all parts with the same number
+            // that are NOT attached to any rig (parent_id is null)
+            $spare->warehouse_stock = Equipment::where('serial_number', $spare->serial_number)
+                ->whereNull('parent_id')
+                ->sum('quantity');
+
             return $spare;
         });
 
+        // 3. Group them for the PDF-style UI
         $sparesGrouped = $sparesWithStock->groupBy('functional_group');
-
-        $warehouseSpares = Equipment::where('is_attachment', 1)
-            ->whereNull('parent_id')
-            ->get();
 
         return Inertia::render('Inventory/RigSparesCatalogue', [
             'rig' => $rig,
             'sparesGrouped' => $sparesGrouped,
-            'warehouseSpares' => $warehouseSpares,
-            'existingGroups' => Equipment::distinct()->pluck('functional_group')
+            'warehouseSpares' => Equipment::where('is_attachment', 1)->whereNull('parent_id')->get(),
+            'existingGroups' => Equipment::whereNotNull('functional_group')
+                ->where('functional_group', '!=', '')
+                ->distinct()
+                ->orderBy('functional_group', 'asc')
+                ->pluck('functional_group')
         ]);
     }
+
     public function addSpareToCatalogue(Request $request, $id)
     {
-        // 1. Validate the input
-        $request->validate([
-            'spare_id'         => 'nullable|exists:equipment,id',
-            'new_part_name'    => 'nullable|required_without:spare_id|string',
-            'part_number'      => 'required|string', // This is the Serial Number in your DB
-            'functional_group' => 'required|string',
-        ]);
-
         $rig = Equipment::findOrFail($id);
 
-        // 2. Scenario A: Linking an existing spare from the Warehouse
-        if ($request->spare_id) {
-            $equipment = Equipment::findOrFail($request->spare_id);
+        $request->validate([
+            'part_number' => 'required',
+            'functional_group' => 'required',
+            'quantity_to_add' => 'required|integer|min:1',
+        ]);
 
-            $equipment->update([
-                'parent_id'        => $rig->id,
-                'functional_group' => $request->functional_group,
-                'serial_number'    => $request->part_number, // Sync with PDF part number
-                'current_site_id'  => $rig->current_site_id, // Inherit Rig's location
-                'status'           => 'Working'
-            ]);
-        }
-        // 3. Scenario B: Creating a brand new part from the PDF
-        else {
-            Equipment::create([
-                'name'             => $request->new_part_name,
-                'serial_number'    => $request->part_number,
-                'functional_group' => $request->functional_group,
-                'parent_id'        => $rig->id,
-                'current_site_id'  => $rig->current_site_id, // Automatically place it where the Rig is
-                'status'           => 'Working',
-                'is_attachment'    => 1, // Mark as a spare/component
-            ]);
+        $totalQty = (int) $request->input('quantity_to_add');
+        $partNumber = $request->part_number;
+        // Clean group name to avoid duplicates like "winch" vs "Winch"
+        $groupName = ucwords(strtolower($request->functional_group));
+
+        // 1. ATTACH 1 UNIT TO RIG
+        Equipment::updateOrCreate(
+            ['parent_id' => $rig->id, 'serial_number' => $partNumber],
+            [
+                'name' => $request->new_part_name,
+                'quantity' => 1,
+                'functional_group' => $groupName,
+                'current_site_id' => $rig->current_site_id,
+                'is_attachment' => 1,
+                'status' => 'Working'
+            ]
+        );
+
+        // 2. MOVE REMAINDER TO WAREHOUSE
+        $remainder = $totalQty - 1;
+        if ($remainder > 0) {
+            $warehouseItem = Equipment::where('serial_number', $partNumber)
+                ->whereNull('parent_id')
+                ->first();
+
+            if ($warehouseItem) {
+                $warehouseItem->increment('quantity', $remainder);
+            } else {
+                Equipment::create([
+                    'name' => $request->new_part_name,
+                    'serial_number' => $partNumber,
+                    'quantity' => $remainder,
+                    'parent_id' => null,
+                    'status' => 'In Stock',
+                    'is_attachment' => 1,
+                    'current_site_id' => 1 // Default warehouse
+                ]);
+            }
         }
 
-        return back()->with('success', 'Catalogue updated successfully.');
+        return back()->with('success', 'Catalogue Updated');
     }
+
     public function lookupPart($serial)
     {
         // Find the part and include its current parent (machine) name if it has one
@@ -434,5 +457,28 @@ class InventoryController extends Controller
         $document->delete();
 
         return back()->with('success', 'Document deleted successfully.');
+    }
+
+    public function quickUpdateStock(Request $request)
+    {
+        $warehouseItem = Equipment::where('serial_number', $request->serial_number)
+            ->whereNull('parent_id')
+            ->first();
+
+        if ($warehouseItem) {
+            $warehouseItem->update(['quantity' => $request->quantity]);
+        } else {
+            // Create warehouse entry if it didn't exist
+            $ref = Equipment::where('serial_number', $request->serial_number)->first();
+            Equipment::create([
+                'name' => $ref->name ?? 'New Spare',
+                'serial_number' => $request->serial_number,
+                'quantity' => $request->quantity,
+                'parent_id' => null,
+                'status' => 'In Stock',
+                'is_attachment' => 1
+            ]);
+        }
+        return back();
     }
 }

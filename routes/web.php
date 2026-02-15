@@ -98,6 +98,7 @@ Route::middleware(['auth'])->group(function () {
         ->name('inventory.rig.upload-manuals');
     Route::delete('/inventory/documents/{id}', [InventoryController::class, 'deleteDocument'])
         ->name('inventory.documents.delete');
+        Route::post('/inventory/stock-update', [InventoryController::class, 'quickUpdateStock'])->name('inventory.stock-update');
 });
 
 // --- 1. AUTHENTICATION (Login, Logout, etc) ---

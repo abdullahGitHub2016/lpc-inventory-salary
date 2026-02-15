@@ -12,6 +12,7 @@ class Equipment extends Model
         'name',
         'serial_number',
         'functional_group', // <--- MAKE SURE THIS IS HERE
+        'quantity', // <--- MAKE SURE THIS IS HERE
         'current_site_id',
         'status',
         'is_attachment', // ADD THIS
