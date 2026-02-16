@@ -1,5 +1,89 @@
+<script setup>
+import { ref, computed } from 'vue';
+import PartHistoryModal from './PartHistoryModal.vue';
+import LogEntryModal from './LogEntryModal.vue';
+import { Link } from '@inertiajs/vue3'; // Import the Link component
+
+const props = defineProps({
+    rig: Object,
+    inventory: Array, // This must be an Array type
+    sparesGrouped: Object,
+    warehouseSpares: Array,
+    existingGroups: Array
+});
+
+const searchQuery = ref('');
+const historyModalOpen = ref(false);
+const logModalOpen = ref(false);
+const selectedPart = ref(null);
+
+// FIXED: Computed property with Safety Guards
+const groupedInventory = computed(() => {
+    // 1. Safety check: If inventory is missing, return empty object
+    if (!props.inventory) return {};
+
+    // 2. Filter logic with string safety
+    const filtered = props.inventory.filter(p => {
+        const s = searchQuery.value.toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        const sn = (p.serial_number || '').toLowerCase();
+        return name.includes(s) || sn.includes(s);
+    });
+
+    // 3. Grouping logic
+    return filtered.reduce((acc, part) => {
+        const group = part.functional_group || 'General Spares';
+        if (!acc[group]) acc[group] = [];
+        acc[group].push(part);
+        return acc;
+    }, {});
+});
+
+const viewHistory = (part) => {
+    selectedPart.value = part;
+    historyModalOpen.value = true;
+};
+
+const openLogEntry = (part) => {
+    selectedPart.value = part;
+    logModalOpen.value = true;
+};
+
+const refreshData = () => {
+    // This will depend on your Inertia reload logic
+    console.log("Maintenance log saved. View refreshed.");
+};
+</script>
+
+<style scoped>
+/* Optional: Smooth entry for the groups */
+.space-y-12>div {
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+</style>
 <template>
     <div class="p-6 bg-slate-50 min-h-screen">
+        <div class="max-w-7xl mx-auto mb-4">
+      <Link
+        href="/fleet"
+        class="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors group"
+      >
+        <span class="text-lg group-hover:-translate-x-1 transition-transform">←</span>
+        Back to Fleet Overview
+      </Link>
+    </div>
         <div class="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
                 <h1 class="text-4xl font-black italic uppercase tracking-tighter text-slate-900">
@@ -100,77 +184,4 @@
     </div>
 </template>
 
-<script setup>
-import { ref, computed } from 'vue';
-import PartHistoryModal from './PartHistoryModal.vue';
-import LogEntryModal from './LogEntryModal.vue';
 
-const props = defineProps({
-    rig: Object,
-    inventory: Array, // This must be an Array type
-    sparesGrouped: Object,
-    warehouseSpares: Array,
-    existingGroups: Array
-});
-
-const searchQuery = ref('');
-const historyModalOpen = ref(false);
-const logModalOpen = ref(false);
-const selectedPart = ref(null);
-
-// FIXED: Computed property with Safety Guards
-const groupedInventory = computed(() => {
-    // 1. Safety check: If inventory is missing, return empty object
-    if (!props.inventory) return {};
-
-    // 2. Filter logic with string safety
-    const filtered = props.inventory.filter(p => {
-        const s = searchQuery.value.toLowerCase();
-        const name = (p.name || '').toLowerCase();
-        const sn = (p.serial_number || '').toLowerCase();
-        return name.includes(s) || sn.includes(s);
-    });
-
-    // 3. Grouping logic
-    return filtered.reduce((acc, part) => {
-        const group = part.functional_group || 'General Spares';
-        if (!acc[group]) acc[group] = [];
-        acc[group].push(part);
-        return acc;
-    }, {});
-});
-
-const viewHistory = (part) => {
-    selectedPart.value = part;
-    historyModalOpen.value = true;
-};
-
-const openLogEntry = (part) => {
-    selectedPart.value = part;
-    logModalOpen.value = true;
-};
-
-const refreshData = () => {
-    // This will depend on your Inertia reload logic
-    console.log("Maintenance log saved. View refreshed.");
-};
-</script>
-
-<style scoped>
-/* Optional: Smooth entry for the groups */
-.space-y-12>div {
-    animation: fadeIn 0.4s ease-out forwards;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-</style>
