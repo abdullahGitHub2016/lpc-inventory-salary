@@ -11,6 +11,7 @@ use App\Models\InventoryMovement;
 use App\Models\MaintenanceRecord;
 use App\Models\Site;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -326,10 +327,8 @@ class InventoryController extends Controller
         // 1. Get all spares for this rig
         $spares = Equipment::where('parent_id', $id)->get();
 
-        // 2. Attach the Warehouse Stock count to each item
+        // 2. Attach the Warehouse Stock count
         $sparesWithStock = $spares->map(function ($spare) {
-            // We sum the 'quantity' column for all parts with the same number
-            // that are NOT attached to any rig (parent_id is null)
             $spare->warehouse_stock = Equipment::where('serial_number', $spare->serial_number)
                 ->whereNull('parent_id')
                 ->sum('quantity');
@@ -337,11 +336,11 @@ class InventoryController extends Controller
             return $spare;
         });
 
-        // 3. Group them for the PDF-style UI
         $sparesGrouped = $sparesWithStock->groupBy('functional_group');
 
         return Inertia::render('Inventory/RigSparesCatalogue', [
             'rig' => $rig,
+            'inventory' => $sparesWithStock, // FIX: Pass the actual spares list here
             'sparesGrouped' => $sparesGrouped,
             'warehouseSpares' => Equipment::where('is_attachment', 1)->whereNull('parent_id')->get(),
             'existingGroups' => Equipment::whereNotNull('functional_group')
@@ -355,36 +354,48 @@ class InventoryController extends Controller
     public function addSpareToCatalogue(Request $request, $id)
     {
         $rig = Equipment::findOrFail($id);
-
-        $request->validate([
-            'part_number' => 'required',
-            'functional_group' => 'required',
-            'quantity_to_add' => 'required|integer|min:1',
-        ]);
-
-        $totalQty = (int) $request->input('quantity_to_add');
+        $qtyToAdd = (int) $request->input('quantity_to_add', 1);
         $partNumber = $request->part_number;
-        // Clean group name to avoid duplicates like "winch" vs "Winch"
-        $groupName = ucwords(strtolower($request->functional_group));
 
-        // 1. ATTACH 1 UNIT TO RIG
-        Equipment::updateOrCreate(
-            ['parent_id' => $rig->id, 'serial_number' => $partNumber],
-            [
+        // 1. UPDATE OR CREATE THE PART ON THIS SPECIFIC RIG
+        // This looks for the part NUMBER on THIS RIG ID only.
+        $rigPart = Equipment::where('parent_id', $rig->id)
+            ->where('serial_number', $partNumber)
+            ->first();
+
+        if ($rigPart) {
+            $rigPart->increment('quantity', 1); // We keep 1 active on the rig
+        } else {
+            $newPart = Equipment::create([
                 'name' => $request->new_part_name,
+                'serial_number' => $partNumber,
+                'parent_id' => $rig->id,
                 'quantity' => 1,
-                'functional_group' => $groupName,
+                'functional_group' => $request->functional_group,
                 'current_site_id' => $rig->current_site_id,
                 'is_attachment' => 1,
                 'status' => 'Working'
-            ]
-        );
+            ]);
+        }
 
-        // 2. MOVE REMAINDER TO WAREHOUSE
-        $remainder = $totalQty - 1;
+        \App\Models\InventoryLog::create([
+            'serial_number'   => $request->part_number,
+            'equipment_id'    => $newPart->id, // <--- THIS SAVES THE ID OF THE RIG-SPECIFIC PART
+            'user_id'         => Auth::id(),
+            'action'          => 'Installation',
+            'location_from'   => 'Main Warehouse',
+            'location_to'     => $rig->name,
+            'quantity_change' => -1,
+            'notes'           => "Linked to rig group: " . $request->functional_group
+        ]);
+
+        // 2. HANDLE THE REMAINDER IN THE WAREHOUSE
+        $remainder = $qtyToAdd - 1;
         if ($remainder > 0) {
-            $warehouseItem = Equipment::where('serial_number', $partNumber)
-                ->whereNull('parent_id')
+            // Find stock in the warehouse (where parent_id is NULL)
+            // You could also filter by 'current_site_id' if you have multiple warehouses
+            $warehouseItem = Equipment::whereNull('parent_id')
+                ->where('serial_number', $partNumber)
                 ->first();
 
             if ($warehouseItem) {
@@ -393,16 +404,15 @@ class InventoryController extends Controller
                 Equipment::create([
                     'name' => $request->new_part_name,
                     'serial_number' => $partNumber,
+                    'parent_id' => null, // Warehouse
                     'quantity' => $remainder,
-                    'parent_id' => null,
+                    'current_site_id' => 1, // Main Warehouse Site
                     'status' => 'In Stock',
-                    'is_attachment' => 1,
-                    'current_site_id' => 1 // Default warehouse
                 ]);
             }
         }
 
-        return back()->with('success', 'Catalogue Updated');
+        return back();
     }
 
     public function lookupPart($serial)

@@ -92,13 +92,20 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/inventory/rig/{id}/spares', [InventoryController::class, 'rigSpares'])->name('inventory.rig.spares');
     Route::post('/inventory/rig/{id}/add-spare', [InventoryController::class, 'addSpareToCatalogue'])
         ->name('inventory.rig.add-spare');
+    Route::get('/inventory/rig/{id}', [InventoryController::class, 'rigSpares'])->name('inventory.rig.show');
     Route::get('/inventory/lookup-part/{serial}', [InventoryController::class, 'lookupPart']);
     // Make sure this exists and matches your Vue axios/router call
     Route::post('/inventory/rig/{id}/upload-manuals', [InventoryController::class, 'uploadDocuments'])
         ->name('inventory.rig.upload-manuals');
     Route::delete('/inventory/documents/{id}', [InventoryController::class, 'deleteDocument'])
         ->name('inventory.documents.delete');
-        Route::post('/inventory/stock-update', [InventoryController::class, 'quickUpdateStock'])->name('inventory.stock-update');
+    Route::post('/inventory/stock-update', [InventoryController::class, 'quickUpdateStock'])->name('inventory.stock-update');
+    Route::get('/api/inventory-logs/{serial_number}', function ($sn) {
+        return \App\Models\InventoryLog::with('user')
+            ->where('serial_number', $sn)
+            ->latest()
+            ->get();
+    });
 });
 
 // --- 1. AUTHENTICATION (Login, Logout, etc) ---
