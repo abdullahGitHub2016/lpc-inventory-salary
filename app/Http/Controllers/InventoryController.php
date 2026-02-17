@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Employee;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
+use App\Models\InventoryLog;
 use App\Models\InventoryMovement;
 use App\Models\MaintenanceRecord;
 use App\Models\Site;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class InventoryController extends Controller
 {
@@ -490,5 +492,32 @@ class InventoryController extends Controller
             ]);
         }
         return back();
+    }
+
+    public function askAiAboutHistory(Request $request, $serialNumber)
+    {
+        set_time_limit(1020);
+        try {
+            $logs = InventoryLog::where('serial_number', $serialNumber)->get();
+
+            if ($logs->isEmpty()) {
+                return response()->json(['answer' => "No history found for this serial."]);
+            }
+
+            $historyContext = $logs->map(fn($l) => "Action: {$l->action}, Note: {$l->notes}")->implode("\n");
+
+            $result = OpenAI::chat()->create([
+                'model' => 'llama3.2', // Change this to match your Ollama model
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a maintenance assistant...'],
+                    ['role' => 'user', 'content' => "History:\n$historyContext\n\nQuestion: {$request->question}"]
+                ],
+            ]);
+
+            return response()->json(['answer' => $result->choices[0]->message->content]);
+        } catch (\Exception $e) {
+            // This will send the real error message back to your Vue console!
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 }

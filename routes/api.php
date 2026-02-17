@@ -1,10 +1,12 @@
 <?php
 
-use App\Models\InventoryLog;
+use App\Http\Controllers\InventoryController;
 use App\Models\Equipment;
+use App\Models\InventoryLog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
+
 
 Route::get('/inventory-logs/{serial_number}', function ($sn) {
     return \App\Models\InventoryLog::where('serial_number', $sn)
@@ -26,3 +28,6 @@ Route::post('/inventory-logs', function (Request $request) {
         'notes'           => $request->notes,
     ]);
 });
+
+// Ensure this matches the URL in your Vue file exactly
+Route::post('/inventory/ai-search/{serialNumber}', [InventoryController::class, 'askAiAboutHistory']);

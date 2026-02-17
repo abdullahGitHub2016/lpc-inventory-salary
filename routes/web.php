@@ -106,6 +106,7 @@ Route::middleware(['auth'])->group(function () {
             ->latest()
             ->get();
     });
+
 });
 
 // --- 1. AUTHENTICATION (Login, Logout, etc) ---
