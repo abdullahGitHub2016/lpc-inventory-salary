@@ -67,7 +67,6 @@ class InventoryController extends Controller
                 $query->where('name', 'like', "%{$search}%")
                     ->orWhere('serial_number', 'like', "%{$search}%");
             })
-            // CRITICAL: Eager load maintenance_logs and the mechanic relationship
             ->with(['currentSite', 'spares', 'maintenanceLogs.mechanic'])
             ->latest()
             ->paginate(10)
@@ -77,6 +76,8 @@ class InventoryController extends Controller
             'equipment' => $equipment,
             'sites' => Site::all(),
             'employees' => Employee::all(),
+            'categories' => Category::all(), // ADD THIS
+            'brands' => Brand::all(),         // ADD THIS
         ]);
     }
     // Function for the Depo Page

@@ -3,11 +3,35 @@ import { ref, watch } from 'vue';
 import { useForm, Head, Link, router } from '@inertiajs/vue3';
 import { debounce } from 'lodash';
 
+// Add these to your existing props
 const props = defineProps({
     equipment: Object,
     sites: Array,
-    employees: Array
+    employees: Array,
+    categories: Array, // Added
+    brands: Array      // Added
 });
+
+const showAddModal = ref(false); // Modal toggle
+
+const addForm = useForm({
+    name: '',
+    serial_number: '',
+    category_id: '',
+    brand_id: '',
+    current_site_id: '',
+    status: 'Working',
+    is_attachment: 0 // 0 for Fleet/Rig
+});
+
+const submitAdd = () => {
+    addForm.post(route('inventory.store'), {
+        onSuccess: () => {
+            showAddModal.value = false;
+            addForm.reset();
+        }
+    });
+};
 
 // --- SEARCH STATE & LOGIC ---
 const searchQuery = ref(new URLSearchParams(window.location.search).get('search') || '');
@@ -106,6 +130,49 @@ const unlinkSpare = (spareId) => {
     }
 };
 
+// Add this to your <script setup> in FleetList.vue
+const closeAddModal = () => {
+    addForm.reset();         // Clears all input fields
+    addForm.clearErrors();   // Clears any validation messages from Laravel
+    showAddModal.value = false;
+};
+
+// --- ADDITIONAL STATE ---
+const showEditModal = ref(false);
+
+// --- EDIT FORM ---
+const editForm = useForm({
+    id: null,
+    name: '',
+    serial_number: '',
+    status: '',
+    current_site_id: ''
+});
+
+// --- METHODS ---
+const openEditModal = (item) => {
+    editForm.id = item.id;
+    editForm.name = item.name;
+    editForm.serial_number = item.serial_number;
+    editForm.status = item.status;
+    editForm.current_site_id = item.current_site_id;
+    showEditModal.value = true;
+};
+
+const closeEditModal = () => {
+    editForm.reset();
+    editForm.clearErrors();
+    showEditModal.value = false;
+};
+
+const submitUpdate = () => {
+    // Directing to the update method in InventoryController
+    editForm.put(`/inventory/${editForm.id}`, {
+        onSuccess: () => closeEditModal(),
+        preserveScroll: true
+    });
+};
+
 </script>
 
 <template>
@@ -116,9 +183,14 @@ const unlinkSpare = (spareId) => {
             <div
                 class="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <h1 class="text-2xl font-black uppercase italic text-gray-900">Active Fleet</h1>
-                <div class="relative w-full md:w-64">
-                    <input v-model="searchQuery" placeholder="Search rigs..."
-                        class="w-full rounded-xl border-gray-200 text-sm px-4 py-2 focus:ring-2 focus:ring-indigo-500" />
+                <div class="flex gap-2">
+                    <div class="relative w-full md:w-64">
+                        <input v-model="searchQuery" placeholder="Search rigs..." class="..." />
+                    </div>
+                    <button @click="showAddModal = true"
+                        class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-emerald-700 transition-all">
+                        + Add Rig
+                    </button>
                 </div>
             </div>
 
@@ -169,6 +241,11 @@ const unlinkSpare = (spareId) => {
                                         class="text-emerald-600 font-black text-[10px] uppercase underline mx-2">
                                         View Spares
                                     </Link>
+
+                                    <button @click="openEditModal(item)"
+                                        class="text-indigo-600 font-black text-[10px] uppercase underline mx-2">
+                                        Edit Rig
+                                    </button>
                                 </td>
                             </tr>
                         </tbody>
@@ -290,6 +367,88 @@ const unlinkSpare = (spareId) => {
                     class="text-xs italic text-gray-400 text-center py-8 bg-gray-50/50 rounded-2xl border border-dashed">
                     No service records found for this unit.</p>
             </div>
+        </div>
+    </div>
+    <div v-if="showAddModal"
+        class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black uppercase italic text-gray-900">Add New Rig</h3>
+                <button @click="closeAddModal" class="text-2xl text-gray-400">&times;</button>
+            </div>
+
+            <form @submit.prevent="submitAdd" class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                    <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Machine Name</label>
+                    <input v-model="addForm.name" type="text"
+                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50" required />
+                </div>
+                <div>
+                    <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Serial Number</label>
+                    <input v-model="addForm.serial_number" type="text"
+                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50" required />
+                </div>
+                <div>
+                    <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Initial Site</label>
+                    <select v-model="addForm.current_site_id"
+                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50" required>
+                        <option value="">Select Site</option>
+                        <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.location_name }}</option>
+                    </select>
+                </div>
+
+                <div class="col-span-2 flex gap-3 pt-6 border-t mt-4">
+                    <button type="button" @click="closeAddModal"
+                        class="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px]">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                        class="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-emerald-100"
+                        :disabled="addForm.processing">
+                        {{ addForm.processing ? 'Creating...' : 'Create Rig' }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div v-if="showEditModal"
+        class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black uppercase italic text-gray-900">Edit Equipment</h3>
+                <button @click="closeEditModal" class="text-2xl text-gray-400">&times;</button>
+            </div>
+
+            <form @submit.prevent="submitUpdate" class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                    <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Machine Name</label>
+                    <input v-model="editForm.name" type="text"
+                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50" required />
+                </div>
+                <div>
+                    <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Serial Number</label>
+                    <input v-model="editForm.serial_number" type="text"
+                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50" required />
+                </div>
+                <div>
+                    <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Status</label>
+                    <select v-model="editForm.status" class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50">
+                        <option value="Working">Working</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="Under Repair">Under Repair</option>
+                    </select>
+                </div>
+
+                <div class="col-span-2 flex gap-3 pt-6 border-t mt-4">
+                    <button type="button" @click="closeEditModal"
+                        class="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px]">Cancel</button>
+                    <button type="submit"
+                        class="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg"
+                        :disabled="editForm.processing">
+                        Update Machine
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </template>
