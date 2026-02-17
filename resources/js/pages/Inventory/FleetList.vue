@@ -284,7 +284,7 @@ const submitUpdate = () => {
                         <div>
                             <p class="font-bold text-xs text-gray-800">{{ spare.name }}</p>
                             <p class="text-[9px] font-mono text-indigo-400 font-bold uppercase">{{ spare.serial_number
-                                }}</p>
+                            }}</p>
                         </div>
                         <button @click="unlinkSpare(spare.id)"
                             class="text-[9px] font-black text-red-500 uppercase underline hover:text-red-700">Unlink</button>
@@ -386,7 +386,13 @@ const submitUpdate = () => {
                 <div>
                     <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Serial Number</label>
                     <input v-model="addForm.serial_number" type="text"
-                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50" required />
+                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50 focus:bg-white"
+                        :class="{ 'border-red-500 ring-1 ring-red-500': addForm.errors.serial_number }" required />
+
+                    <div v-if="addForm.errors.serial_number"
+                        class="text-red-600 text-[10px] mt-1 ml-2 font-bold uppercase italic animate-pulse">
+                        ⚠️ {{ addForm.errors.serial_number }}
+                    </div>
                 </div>
                 <div>
                     <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Initial Site</label>
@@ -428,7 +434,13 @@ const submitUpdate = () => {
                 <div>
                     <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Serial Number</label>
                     <input v-model="editForm.serial_number" type="text"
-                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50" required />
+                        class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50 focus:bg-white"
+                        :class="{ 'border-red-500 ring-1 ring-red-500': editForm.errors.serial_number }" required disabled="disabled" />
+
+                    <div v-if="editForm.errors.serial_number"
+                        class="text-red-600 text-[10px] mt-1 ml-2 font-bold uppercase italic animate-pulse">
+                        ⚠️ {{ editForm.errors.serial_number }}
+                    </div>
                 </div>
                 <div>
                     <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Status</label>
