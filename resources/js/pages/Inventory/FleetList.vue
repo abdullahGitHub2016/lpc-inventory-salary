@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { useForm, Head, Link, router } from '@inertiajs/vue3';
 import { debounce } from 'lodash';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 // 1. Import useForm from inertia if not already there
 
 // Add these to your existing props
@@ -211,6 +212,7 @@ const submitUpdate = () => {
 <template>
 
     <Head title="Fleet Management" />
+    <AuthenticatedLayout>
     <div class="min-h-screen bg-gray-50 p-4 md:p-8">
         <div class="max-w-7xl mx-auto">
             <div
@@ -536,5 +538,5 @@ const submitUpdate = () => {
         </form>
     </div>
 </div>
-
+</AuthenticatedLayout>
 </template>

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { useForm, Link, router } from '@inertiajs/vue3';
 import PartHistoryModal from './PartHistoryModal.vue';
 import LogEntryModal from './LogEntryModal.vue';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     rig: Object,
@@ -89,6 +90,7 @@ const deleteDocument = (documentId) => {
 </script>
 
 <template>
+    <AuthenticatedLayout>
     <div class="min-h-screen bg-slate-50 p-4 md:p-8">
         <div class="max-w-7xl mx-auto">
 
@@ -251,4 +253,5 @@ const deleteDocument = (documentId) => {
             :serialNumber="selectedPart.serial_number" @close="historyModalOpen = false" />
         <LogEntryModal v-if="selectedPart" :show="logModalOpen" :part="selectedPart" @close="logModalOpen = false" />
     </div>
+    </AuthenticatedLayout>
 </template>
