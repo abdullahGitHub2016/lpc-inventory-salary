@@ -78,11 +78,12 @@ const cancelEdit = () => {
                         class="group bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:shadow-xl transition-all">
                         <h3 class="text-2xl font-black uppercase italic text-slate-900">Fleet Hub</h3>
                     </Link>
+                    <!--
                     <Link :href="route('inventory.depo')"
                         class="group bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 hover:shadow-xl transition-all">
                         <h3 class="text-2xl font-black uppercase italic text-slate-900">Depo Hub</h3>
                     </Link>
-
+                    -->
                 </div>
 
                 <div class="bg-white rounded-[40px] p-10 shadow-sm border border-slate-200">
@@ -107,7 +108,7 @@ const cancelEdit = () => {
 
                             <div v-else class="flex justify-between items-center w-full">
                                 <span class="text-xs font-bold text-slate-700 uppercase italic">{{ reason.reason_name
-                                    }}</span>
+                                }}</span>
                                 <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button @click="startEdit(reason)"
                                         class="text-indigo-400 hover:text-indigo-600">✏️</button>
