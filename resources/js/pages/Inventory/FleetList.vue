@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { useForm, Head, Link, router } from '@inertiajs/vue3';
 import { debounce } from 'lodash';
+// 1. Import useForm from inertia if not already there
 
 // Add these to your existing props
 const props = defineProps({
@@ -11,6 +12,38 @@ const props = defineProps({
     categories: Array, // Added
     brands: Array      // Added
 });
+
+
+// 1. Modal & Selection State
+const showDocModal = ref(false);
+const selectedRigForDoc = ref(null);
+
+// 2. Form Setup (Matching your Controller's "documents" key)
+const docForm = useForm({
+    documents: [], // This MUST be an array for your foreach loop
+});
+
+// 3. THE FUNCTION THAT FIXES THE ERROR
+const openDocModal = (rig) => {
+    selectedRigForDoc.value = rig;
+    docForm.documents = []; // Clear previous selection
+    showDocModal.value = true;
+};
+
+// 4. Upload Logic
+const submitDoc = () => {
+    docForm.post(route('inventory.rig.upload-manuals', selectedRigForDoc.value.id), {
+        forceFormData: true,
+        onSuccess: () => {
+            showDocModal.value = false;
+            docForm.reset();
+
+            // REDIRECT: Send the user to the spares page for this specific rig
+            router.get(route('inventory.rig.spares', selectedRigForDoc.value.id));
+        },
+        preserveScroll: true
+    });
+};
 
 const showAddModal = ref(false); // Modal toggle
 
@@ -246,6 +279,10 @@ const submitUpdate = () => {
                                         class="text-indigo-600 font-black text-[10px] uppercase underline mx-2">
                                         Edit Rig
                                     </button>
+                                    <button @click="openDocModal(item)"
+                                        class="text-amber-600 font-black text-[10px] uppercase underline mx-2">
+                                        + Add Doc
+                                    </button>
                                 </td>
                             </tr>
                         </tbody>
@@ -284,7 +321,7 @@ const submitUpdate = () => {
                         <div>
                             <p class="font-bold text-xs text-gray-800">{{ spare.name }}</p>
                             <p class="text-[9px] font-mono text-indigo-400 font-bold uppercase">{{ spare.serial_number
-                            }}</p>
+                                }}</p>
                         </div>
                         <button @click="unlinkSpare(spare.id)"
                             class="text-[9px] font-black text-red-500 uppercase underline hover:text-red-700">Unlink</button>
@@ -435,7 +472,8 @@ const submitUpdate = () => {
                     <label class="text-[10px] font-black uppercase text-gray-400 ml-2">Serial Number</label>
                     <input v-model="editForm.serial_number" type="text"
                         class="w-full border-gray-200 rounded-2xl text-sm p-3 bg-gray-50 focus:bg-white"
-                        :class="{ 'border-red-500 ring-1 ring-red-500': editForm.errors.serial_number }" required disabled="disabled" />
+                        :class="{ 'border-red-500 ring-1 ring-red-500': editForm.errors.serial_number }" required
+                        disabled="disabled" />
 
                     <div v-if="editForm.errors.serial_number"
                         class="text-red-600 text-[10px] mt-1 ml-2 font-bold uppercase italic animate-pulse">
@@ -463,4 +501,40 @@ const submitUpdate = () => {
             </form>
         </div>
     </div>
+
+    <div v-if="showDocModal" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-black uppercase italic text-slate-900">
+                Upload Docs: {{ selectedRigForDoc?.name }}
+            </h3>
+            <button @click="showDocModal = false" class="text-2xl text-slate-300">&times;</button>
+        </div>
+
+        <form @submit.prevent="submitDoc" class="space-y-6">
+            <div class="bg-slate-50 p-6 rounded-2xl border-2 border-dashed border-slate-200 hover:border-indigo-400 transition-colors relative">
+                <label class="text-[10px] font-black uppercase text-slate-400 block mb-2 text-center">Select Technical Manuals (PDF/Images)</label>
+
+                <input
+                    type="file"
+                    multiple
+                    @input="docForm.documents = Array.from($event.target.files)"
+                    class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-indigo-50 file:text-indigo-700 cursor-pointer"
+                />
+
+                <p v-if="docForm.documents.length > 0" class="mt-3 text-[10px] font-bold text-indigo-600 text-center">
+                    {{ docForm.documents.length }} files selected
+                </p>
+            </div>
+
+            <div class="flex gap-3">
+                <button type="button" @click="showDocModal = false" class="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Cancel</button>
+                <button type="submit" class="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg" :disabled="docForm.processing">
+                    {{ docForm.processing ? 'Uploading...' : 'Confirm Upload' }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 </template>

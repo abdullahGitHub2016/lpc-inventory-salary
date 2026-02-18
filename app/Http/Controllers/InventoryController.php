@@ -430,28 +430,30 @@ class InventoryController extends Controller
         ]);
     }
     public function uploadDocuments(Request $request, $id)
-    {
-        // 1. Debug: Check if the request even hits this method
-        // dd($request->all());
+{
+    // 1. Validation is required for files to work properly with Inertia
+    $request->validate([
+        'documents.*' => 'required|file|mimes:pdf,jpg,png,docx|max:10240', // 10MB limit per file
+    ]);
 
-        $rig = Equipment::findOrFail($id); // If $id is wrong, this returns 404
+    $rig = Equipment::findOrFail($id);
 
-        if ($request->hasFile('documents')) {
-            foreach ($request->file('documents') as $file) {
-                // Store in 'public/manuals' folder
-                $path = $file->store('manuals', 'public');
+    // 2. Ensure this matches the key in docForm (see Vue fix below)
+    if ($request->hasFile('documents')) {
+        foreach ($request->file('documents') as $file) {
+            $path = $file->store('manuals', 'public');
 
-                $rig->documents()->create([
-                    'file_name' => $file->getClientOriginalName(),
-                    'file_path' => '/storage/' . $path, // This prefix requires the storage link
-                    'file_type' => $file->getClientOriginalExtension(),
-                    'file_size' => $file->getSize(),
-                ]);
-            }
+            $rig->documents()->create([
+                'file_name' => $file->getClientOriginalName(),
+                'file_path' => '/storage/' . $path,
+                'file_type' => $file->getClientOriginalExtension(),
+                'file_size' => $file->getSize(),
+            ]);
         }
-
-        return back();
     }
+
+    return back()->with('message', 'Documents uploaded successfully');
+}
 
 
     public function deleteDocument($id)
