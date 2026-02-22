@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Controllers\AdvanceReasonController;
 use App\Http\Controllers\HomeController;
-use App\Http\Controllers\SalaryController;
-use App\Http\Controllers\SalaryArchiveController;
-use App\Http\Controllers\ProfileController;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SalaryArchiveController;
+use App\Http\Controllers\SalaryController;
+use App\Http\Controllers\SiteController;
+use Illuminate\Support\Facades\Route;
+
 
 
 
@@ -107,6 +110,23 @@ Route::middleware(['auth'])->group(function () {
             ->get();
     });
 
+});
+
+
+
+Route::middleware(['auth'])->group(function () {
+    // Site Management Routes
+    Route::get('/sites', [SiteController::class, 'index'])->name('sites.index');
+    Route::post('/sites', [SiteController::class, 'store'])->name('sites.store');
+    Route::put('/sites/{id}', [SiteController::class, 'update'])->name('sites.update');
+    Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/advance-reasons', [AdvanceReasonController::class, 'index'])->name('advance-reasons.index');
+    Route::post('/advance-reasons', [AdvanceReasonController::class, 'store'])->name('advance-reasons.store');
+    Route::put('/advance-reasons/{id}', [AdvanceReasonController::class, 'update'])->name('advance-reasons.update');
+    Route::delete('/advance-reasons/{id}', [AdvanceReasonController::class, 'destroy'])->name('advance-reasons.destroy');
 });
 
 // --- 1. AUTHENTICATION (Login, Logout, etc) ---

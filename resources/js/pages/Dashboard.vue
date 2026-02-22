@@ -86,59 +86,9 @@ const cancelEdit = () => {
                     -->
                 </div>
 
-                <div class="bg-white rounded-[40px] p-10 shadow-sm border border-slate-200">
-                    <div class="flex justify-between items-center mb-8">
-                        <h2 class="text-xl font-black uppercase italic text-slate-900">Advance Configuration</h2>
-                        <button @click="showReasonModal = true"
-                            class="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase italic hover:bg-indigo-600">
-                            + Add Reason
-                        </button>
-                    </div>
 
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div v-for="reason in advanceReasons" :key="reason.id"
-                            class="flex justify-between items-center bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100 group">
-
-                            <div v-if="editingId === reason.id" class="flex items-center gap-2 w-full">
-                                <input v-model="editForm.reason_name" type="text"
-                                    class="text-xs font-bold uppercase italic border-indigo-500 rounded-lg p-1 w-full" />
-                                <button @click="saveEdit(reason.id)" class="text-green-500 text-lg">✅</button>
-                                <button @click="cancelEdit" class="text-slate-400 text-lg">❌</button>
-                            </div>
-
-                            <div v-else class="flex justify-between items-center w-full">
-                                <span class="text-xs font-bold text-slate-700 uppercase italic">{{ reason.reason_name
-                                }}</span>
-                                <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button @click="startEdit(reason)"
-                                        class="text-indigo-400 hover:text-indigo-600">✏️</button>
-                                    <button @click="deleteReason(reason.id)"
-                                        class="text-slate-300 hover:text-red-500">🗑️</button>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
-        <div v-if="showReasonModal"
-            class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-[40px] p-10 w-full max-w-md shadow-2xl">
-                <h3 class="text-xl font-black uppercase italic mb-6">New Reason</h3>
-                <form @submit.prevent="submitReason" class="space-y-4">
-                    <input v-model="form.reason_name" type="text" placeholder="Reason Name" required
-                        class="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-sm font-bold focus:ring-2 focus:ring-indigo-500" />
-                    <div class="flex gap-3">
-                        <button type="button" @click="showReasonModal = false"
-                            class="flex-1 py-4 text-xs font-black uppercase italic text-slate-400">Cancel</button>
-                        <button type="submit"
-                            class="flex-1 bg-indigo-600 text-white rounded-2xl py-4 text-xs font-black uppercase italic"
-                            :disabled="form.processing">Save</button>
-                    </div>
-                </form>
-            </div>
-        </div>
     </AuthenticatedLayout>
 </template>

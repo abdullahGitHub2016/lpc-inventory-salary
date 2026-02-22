@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class Site extends Model
 {
-    protected $fillable = ['location_name', 'supervisor_id'];
+    protected $fillable = ['location_name'];
 }

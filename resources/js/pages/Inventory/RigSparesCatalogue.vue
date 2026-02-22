@@ -99,7 +99,7 @@ const deleteDocument = (documentId) => {
                     <div>
                         <div class="flex items-center gap-2 mb-2">
                             <Link :href="route('inventory.fleet')"
-                                class="text-[10px] font-black uppercase text-indigo-500 hover:underline">← Fleet</Link>
+                                class="text-[10px] font-black uppercase text-indigo-500 hover:underline">← Machine</Link>
                             <span class="text-slate-300">/</span>
                             <span class="text-[10px] font-black uppercase text-slate-400 italic">Catalogue</span>
                         </div>

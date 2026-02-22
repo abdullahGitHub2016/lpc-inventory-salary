@@ -217,14 +217,14 @@ const submitUpdate = () => {
         <div class="max-w-7xl mx-auto">
             <div
                 class="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
-                <h1 class="text-2xl font-black uppercase italic text-gray-900">Active Fleet</h1>
+                <h1 class="text-2xl font-black uppercase italic text-gray-900">Active Machine</h1>
                 <div class="flex gap-2">
                     <div class="relative w-full md:w-64">
                         <input v-model="searchQuery" placeholder="Search rigs..." class="..." />
                     </div>
                     <button @click="showAddModal = true"
                         class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-emerald-700 transition-all">
-                        + Add Rig
+                        + Add Machine
                     </button>
                 </div>
             </div>
@@ -279,7 +279,7 @@ const submitUpdate = () => {
 
                                     <button @click="openEditModal(item)"
                                         class="text-indigo-600 font-black text-[10px] uppercase underline mx-2">
-                                        Edit Rig
+                                        Edit Machine
                                     </button>
                                     <button @click="openDocModal(item)"
                                         class="text-amber-600 font-black text-[10px] uppercase underline mx-2">
